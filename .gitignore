@@ -6,6 +6,8 @@
 *.tmp
 *.rej
 *.orig
+*.o
+*.bs
 *~
 /Build
 /Build.bat
@@ -19,3 +21,5 @@
 /MYMETA.json
 .errors.err
 errors.err
+xs/*.c
+/config.log
