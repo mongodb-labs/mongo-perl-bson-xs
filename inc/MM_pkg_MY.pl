@@ -84,7 +84,7 @@
     }
 
     sub postamble {
-        return <<'EOF';
+        my $txt = <<'EOF';
 $(OBJECT) : perl_mongo.h
 
 cover : pure_all
@@ -94,6 +94,8 @@ ptest : pure_all
         HARNESS_OPTIONS=j9 make test
 
 EOF
+        $txt =~ s/^ +/\t/mg;
+        return $txt;
     }
 
 }
