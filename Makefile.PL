@@ -21,19 +21,14 @@ my %WriteMakefileArgs = (
   "NAME" => "BSON::XS",
   "OBJECT" => "xs/XS\$(OBJ_EXT) bson/bson-atomic\$(OBJ_EXT) bson/bson-clock\$(OBJ_EXT) bson/bson-context\$(OBJ_EXT) bson/bson-error\$(OBJ_EXT) bson/bson-iso8601\$(OBJ_EXT) bson/bson-iter\$(OBJ_EXT) bson/bson-keys\$(OBJ_EXT) bson/bson-md5\$(OBJ_EXT) bson/bson-memory\$(OBJ_EXT) bson/bson-oid\$(OBJ_EXT) bson/bson-reader\$(OBJ_EXT) bson/bson-string\$(OBJ_EXT) bson/bson-timegm\$(OBJ_EXT) bson/bson-utf8\$(OBJ_EXT) bson/bson-value\$(OBJ_EXT) bson/bson-version\$(OBJ_EXT) bson/bson-writer\$(OBJ_EXT) bson/bson\$(OBJ_EXT)",
   "PREREQ_PM" => {
-    "Carp" => 0,
-    "DateTime" => 0,
-    "Moo" => 0,
-    "Types::Standard" => 0,
+    "BSON" => "1.000000",
     "XSLoader" => 0,
-    "boolean" => 0,
-    "if" => 0,
-    "namespace::clean" => 0,
     "strict" => 0,
     "version" => 0,
     "warnings" => 0
   },
   "TEST_REQUIRES" => {
+    "DateTime" => 0,
     "DateTime::Tiny" => 0,
     "Exporter" => 0,
     "ExtUtils::MakeMaker" => 0,
@@ -47,6 +42,7 @@ my %WriteMakefileArgs = (
     "Test::More" => "0.96",
     "Tie::IxHash" => 0,
     "Time::Moment" => 0,
+    "boolean" => 0,
     "constant" => 0,
     "lib" => 0
   },
@@ -58,12 +54,12 @@ my %WriteMakefileArgs = (
     "FILES" => "xs/XS\$(OBJ_EXT) bson/bson-atomic\$(OBJ_EXT) bson/bson-clock\$(OBJ_EXT) bson/bson-context\$(OBJ_EXT) bson/bson-error\$(OBJ_EXT) bson/bson-iso8601\$(OBJ_EXT) bson/bson-iter\$(OBJ_EXT) bson/bson-keys\$(OBJ_EXT) bson/bson-md5\$(OBJ_EXT) bson/bson-memory\$(OBJ_EXT) bson/bson-oid\$(OBJ_EXT) bson/bson-reader\$(OBJ_EXT) bson/bson-string\$(OBJ_EXT) bson/bson-timegm\$(OBJ_EXT) bson/bson-utf8\$(OBJ_EXT) bson/bson-value\$(OBJ_EXT) bson/bson-version\$(OBJ_EXT) bson/bson-writer\$(OBJ_EXT) bson/bson\$(OBJ_EXT)"
   },
   "test" => {
-    "TESTS" => "t/*.t"
+    "TESTS" => "t/*.t t/mongodb/*.t"
   }
 );
 
 my %FallbackPrereqs = (
-  "Carp" => 0,
+  "BSON" => "1.000000",
   "DateTime" => 0,
   "DateTime::Tiny" => 0,
   "Exporter" => 0,
@@ -73,19 +69,15 @@ my %FallbackPrereqs = (
   "MongoDB" => 0,
   "MongoDB::DBRef" => 0,
   "MongoDB::OID" => 0,
-  "Moo" => 0,
   "Test::Deep" => "0.086",
   "Test::Fatal" => 0,
   "Test::More" => "0.96",
   "Tie::IxHash" => 0,
   "Time::Moment" => 0,
-  "Types::Standard" => 0,
   "XSLoader" => 0,
   "boolean" => 0,
   "constant" => 0,
-  "if" => 0,
   "lib" => 0,
-  "namespace::clean" => 0,
   "strict" => 0,
   "version" => 0,
   "warnings" => 0
