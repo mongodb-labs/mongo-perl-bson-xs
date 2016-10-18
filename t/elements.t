@@ -21,7 +21,6 @@ use Test::Fatal;
 use Config;
 use DateTime;
 use Math::BigInt;
-use MongoDB;
 use MongoDB::OID;
 use MongoDB::DBRef;
 

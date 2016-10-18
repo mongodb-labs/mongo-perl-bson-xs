@@ -19,7 +19,6 @@ use Test::Fatal;
 use Test::Deep;
 use Tie::IxHash;
 
-use MongoDB;
 use MongoDB::OID;
 
 use lib 't/lib';

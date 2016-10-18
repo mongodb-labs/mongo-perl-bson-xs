@@ -18,7 +18,6 @@ use Test::More 0.96;
 use Test::Fatal;
 use Test::Deep;
 
-use MongoDB;
 use boolean;
 
 use lib "t/lib";
