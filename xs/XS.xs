@@ -754,6 +754,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
        */
       else if (
           sv_isa(sv, "boolean") ||
+          sv_isa(sv, "BSON::Bool") ||
           sv_isa(sv, "JSON::XS::Boolean") ||
           sv_isa(sv, "JSON::PP::Boolean") ||
           sv_isa(sv, "JSON::Tiny::_Bool") ||
@@ -1310,8 +1311,8 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
   }
   case BSON_TYPE_BOOL: {
     value = bson_iter_bool(iter)
-      ? newSVsv(get_sv("MongoDB::BSON::_boolean_true", GV_ADD))
-      : newSVsv(get_sv("MongoDB::BSON::_boolean_false", GV_ADD));
+      ? newSVsv(get_sv("BSON::XS::_boolean_true", GV_ADD))
+      : newSVsv(get_sv("BSON::XS::_boolean_false", GV_ADD));
     break;
   }
   case BSON_TYPE_UNDEFINED:

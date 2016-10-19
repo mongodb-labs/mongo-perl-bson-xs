@@ -23,6 +23,12 @@ package BSON::XS;
 use version;
 our $VERSION = 'v0.1.0';
 
+# cached for efficiency during decoding
+# XXX eventually move this into XS
+use boolean;
+our $_boolean_true  = true;
+our $_boolean_false = false;
+
 use XSLoader;
 XSLoader::load( "BSON::XS", $VERSION );
 
