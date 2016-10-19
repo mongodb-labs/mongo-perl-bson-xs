@@ -830,13 +830,33 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         bson_append_utf8(bson, key, -1, str, str_len);
       }
-      else if (sv_isa(sv, "MongoDB::BSON::Binary")) {
+      else if (sv_isa(sv, "BSON::Bytes") || sv_isa(sv, "MongoDB::BSON::Binary")) {
         SV *data, *subtype;
 
         subtype = sv_2mortal(call_perl_reader(sv, "subtype"));
         data = sv_2mortal(call_perl_reader(sv, "data"));
 
         append_binary(bson, key, SvIV(subtype), data);
+      }
+      else if (sv_isa(sv, "BSON::Binary")) {
+        SV *data, *packed, *subtype;
+        bson_subtype_t int_subtype;
+        char *pat = "C*";
+
+        subtype = sv_2mortal(call_perl_reader(sv, "subtype"));
+        int_subtype = SvOK(subtype) ? SvIV(subtype) : 0;
+        data = sv_2mortal(call_perl_reader(sv, "data"));
+        packed = sv_2mortal(newSVpvs(""));
+
+        /* if data is an array ref, pack it; othewise, pack an empty binary */
+        if ( SvOK(data) && ( SvTYPE(SvRV(data)) == SVt_PVAV) ) {
+          AV *d_array = (AV*) SvRV(data);
+          packlist(packed, pat, pat+2,
+            av_fetch(d_array,0,0), av_fetch(d_array,av_len(d_array),0)
+          );
+        }
+
+        append_binary(bson, key, int_subtype, packed);
       }
       else if (sv_isa(sv, "Regexp")) {
 #if PERL_REVISION==5 && PERL_VERSION>=12
@@ -1301,7 +1321,7 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     bson_subtype_t type;
     bson_iter_binary(iter, &type, &len, (const uint8_t **)&buf);
     value = new_object_from_pairs(
-        "MongoDB::BSON::Binary",
+        "BSON::Bytes",
         "data", sv_2mortal(newSVpvn(buf, len)),
         "subtype", sv_2mortal(newSViv(type)),
         NULL
