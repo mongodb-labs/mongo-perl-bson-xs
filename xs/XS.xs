@@ -1032,6 +1032,9 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         append_decomposed_regex( bson, key, SvPV_nolen( pattern ), SvPV_nolen( flags ) );
       }
+      else if (sv_isa(sv, "BSON::Int32") ) {
+        bson_append_int32(bson, key, -1, (int)SvIV(sv));
+      }
       else if (sv_isa(sv, "BSON::Double") ) {
         bson_append_double(bson, key, -1, (double)SvNV(sv));
       }
@@ -1582,7 +1585,14 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     break;
   }
   case BSON_TYPE_INT32: {
-    value = newSViv(bson_iter_int32(iter));
+    SV *tempsv;
+    SV *i = newSViv(bson_iter_int32(iter));
+    if ( (tempsv = _hv_fetchs_sv(opts, "wrap_numbers")) && SvTRUE(tempsv) ) {
+      value = new_object_from_pairs("BSON::Int32", "value", sv_2mortal(i), NULL);
+    }
+    else {
+      value = i;
+    }
     break;
   }
   case BSON_TYPE_INT64: {
