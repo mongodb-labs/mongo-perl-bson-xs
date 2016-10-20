@@ -948,10 +948,10 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         bson_append_timestamp(bson, key, -1, SvIV(sec), SvIV(inc));
       }
-      else if (sv_isa(sv, "MongoDB::MinKey")) {
+      else if (sv_isa(sv, "BSON::MinKey") || sv_isa(sv, "MongoDB::MinKey")) {
         bson_append_minkey(bson, key, -1);
       }
-      else if (sv_isa(sv, "MongoDB::MaxKey")) {
+      else if (sv_isa(sv, "BSON::MaxKey") || sv_isa(sv, "MongoDB::MaxKey")) {
         bson_append_maxkey(bson, key, -1);
       }
       else if (sv_isa(sv, "MongoDB::BSON::_EncodedDoc")) {
@@ -1727,12 +1727,12 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     break;
   }
   case BSON_TYPE_MINKEY: {
-    HV *stash = gv_stashpv("MongoDB::MinKey", GV_ADD);
+    HV *stash = gv_stashpv("BSON::MinKey", GV_ADD);
     value = sv_bless(newRV((SV*)newHV()), stash);
     break;
   }
   case BSON_TYPE_MAXKEY: {
-    HV *stash = gv_stashpv("MongoDB::MaxKey", GV_ADD);
+    HV *stash = gv_stashpv("BSON::MaxKey", GV_ADD);
     value = sv_bless(newRV((SV*)newHV()), stash);
     break;
   }
