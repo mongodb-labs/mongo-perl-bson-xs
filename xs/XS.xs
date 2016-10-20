@@ -764,7 +764,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         ) {
         bson_append_bool(bson, key, -1, SvIV(SvRV(sv)));
       }
-      else if (sv_isa(sv, "MongoDB::Code")) {
+      else if (sv_isa(sv, "BSON::Code") || sv_isa(sv, "MongoDB::Code")) {
         SV *code, *scope;
         char *code_str;
         STRLEN code_len;
@@ -1428,7 +1428,7 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
 
     code_sv = sv_2mortal(newSVpvn(code, len));
 
-    value = new_object_from_pairs("MongoDB::Code", "code", code_sv, NULL);
+    value = new_object_from_pairs("BSON::Code", "code", code_sv, NULL);
 
     break;
   }
@@ -1449,7 +1449,7 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     }
 
     scope_sv = bson_doc_to_hashref(&child, opts);
-    value = new_object_from_pairs("MongoDB::Code", "code", code_sv, "scope", scope_sv, NULL);
+    value = new_object_from_pairs("BSON::Code", "code", code_sv, "scope", scope_sv, NULL);
 
     break;
   }
