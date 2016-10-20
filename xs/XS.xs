@@ -976,6 +976,21 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_append_document(bson, key, -1, child);
         bson_destroy(child);
       }
+      else if (sv_isa(sv, "BSON::String")) {
+        SV *str_sv;
+        char *str;
+        STRLEN str_len;
+
+        str_sv = call_perl_reader(sv,"value");
+
+        str = SvPVutf8(str_sv, str_len);
+
+        if ( ! is_utf8_string((const U8*)str,str_len)) {
+          croak( "Invalid UTF-8 detected while encoding BSON from %s", SvPV_nolen(sv) );
+        }
+
+        bson_append_utf8(bson, key, -1, str, str_len);
+      }
       else if (sv_isa(sv, "MongoDB::BSON::String")) {
         SV *str_sv;
         char *str;
@@ -1535,6 +1550,8 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
   }
   case BSON_TYPE_SYMBOL:
   case BSON_TYPE_UTF8: {
+    SV *wrap;
+    SV *s;
     const char * str;
     uint32_t len;
 
@@ -1550,8 +1567,15 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
 
     /* this makes a copy of the buffer */
     /* len includes \0 */
-    value = newSVpvn(str, len);
-    SvUTF8_on(value);
+    s = newSVpvn(str, len);
+    SvUTF8_on(s);
+
+    if ( (wrap = _hv_fetchs_sv(opts, "wrap_strings")) && SvTRUE(wrap) ) {
+      value = new_object_from_pairs("BSON::String", "value", sv_2mortal(s), NULL);
+    }
+    else {
+      value = s;
+    }
 
     break;
   }
