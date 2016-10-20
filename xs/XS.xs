@@ -1033,7 +1033,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         append_regex(bson, key, re, sv);
       }
-      else if (sv_isa(sv, "MongoDB::BSON::Regexp") ) { 
+      else if (sv_isa(sv, "BSON::Regex") || sv_isa(sv, "MongoDB::BSON::Regexp") ) { 
         /* Abstract regexp object */
         SV *pattern, *flags;
         pattern = sv_2mortal(call_perl_reader( sv, "pattern" ));
@@ -1677,12 +1677,12 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     const char * options;
     regex_str = bson_iter_regex(iter, &options);
 
-    /* always make a MongoDB::BSON::Regexp object instead of a native Perl
+    /* always make a BSON::Regex object instead of a native Perl
      * regexp to prevent the risk of compilation failure as well as
      * security risks compiling unknown regular expressions. */
 
     value = new_object_from_pairs(
-      "MongoDB::BSON::Regexp",
+      "BSON::Regex",
       "pattern", sv_2mortal(newSVpv(regex_str,0)),
       "flags", sv_2mortal(newSVpv(options,0)),
       NULL
