@@ -875,6 +875,9 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         append_decomposed_regex( bson, key, SvPV_nolen( pattern ), SvPV_nolen( flags ) );
       }
+      else if (sv_isa(sv, "BSON::Double") ) {
+        bson_append_double(bson, key, -1, (double)SvNV(sv));
+      }
       else if (sv_isa(sv, "BSON::Decimal128") ) {
         bson_decimal128_t dec;
         SV *dec_sv;
@@ -1284,7 +1287,19 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     break;
   }
   case BSON_TYPE_DOUBLE: {
-    value = newSVnv(bson_iter_double(iter));
+    SV *tempsv;
+    SV *d = newSVnv(bson_iter_double(iter));
+
+    if (isinfnan(SvNV(d))) {
+      SvPV_nolen(d); /* force to PVNV for compatibility */
+    }
+
+    if ( (tempsv = _hv_fetchs_sv(opts, "wrap_numbers")) && SvTRUE(tempsv) ) {
+      value = new_object_from_pairs("BSON::Double", "value", sv_2mortal(d), NULL);
+    }
+    else {
+      value = d;
+    }
     break;
   }
   case BSON_TYPE_SYMBOL:
