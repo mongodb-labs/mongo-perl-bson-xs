@@ -1032,8 +1032,11 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         append_decomposed_regex( bson, key, SvPV_nolen( pattern ), SvPV_nolen( flags ) );
       }
+      else if (sv_isa(sv, "BSON::Int64") ) {
+        bson_append_int64(bson, key, -1, (int64_t)SvIV(sv));
+      }
       else if (sv_isa(sv, "BSON::Int32") ) {
-        bson_append_int32(bson, key, -1, (int)SvIV(sv));
+        bson_append_int32(bson, key, -1, (int32_t)SvIV(sv));
       }
       else if (sv_isa(sv, "BSON::Double") ) {
         bson_append_double(bson, key, -1, (double)SvNV(sv));
@@ -1597,7 +1600,14 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
   }
   case BSON_TYPE_INT64: {
 #if defined(MONGO_USE_64_BIT_INT)
-    value = newSViv(bson_iter_int64(iter));
+    SV *tempsv;
+    SV *i = newSViv(bson_iter_int64(iter));
+    if ( (tempsv = _hv_fetchs_sv(opts, "wrap_numbers")) && SvTRUE(tempsv) ) {
+      value = new_object_from_pairs("BSON::Int64", "value", sv_2mortal(i), NULL);
+    }
+    else {
+      value = i;
+    }
 #else
     char buf[22];
     SV *as_str;
