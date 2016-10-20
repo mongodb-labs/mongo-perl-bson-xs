@@ -230,11 +230,6 @@ HERE
     ## */
     $conf{BSON_EXTRA_ALIGN} = 0;
 
-    ##/*
-    ## * Define to 1 if _Decimal128 (BID format) is available on your platform.
-    ## */
-    $conf{BSON_HAVE_DECIMAL128} = $ca->check_type('_Decimal128');
-
     return \%conf;
 }
 
