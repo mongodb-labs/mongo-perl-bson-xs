@@ -737,7 +737,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_append_date_time(bson, key, -1, epoch_ms);
       }
       /* DBRef */
-      else if (sv_isa(sv, "MongoDB::DBRef")) { 
+      else if (sv_isa(sv, "BSON::DBRef") || sv_isa(sv, "MongoDB::DBRef")) { 
         SV *dbref;
         bson_t child;
         dbref = sv_2mortal(call_perl_reader(sv, "_ordered"));
@@ -1204,7 +1204,7 @@ perl_mongo_bson_to_sv (const bson_t * bson, HV *opts) {
 static SV *
 bson_doc_to_hashref(bson_iter_t * iter, HV *opts) {
   SV **svp;
-  SV *cb;
+  SV *wrap;
   SV *ret;
   HV *hv = newHV();
 
@@ -1238,9 +1238,10 @@ bson_doc_to_hashref(bson_iter_t * iter, HV *opts) {
 
   /* XXX shouldn't need to limit to size 3 */
   if ( key_num >= 2 && is_dbref == 1
-      && (cb = _hv_fetchs_sv(opts, "dbref_callback")) && SvOK(cb)
+      && (wrap = _hv_fetchs_sv(opts, "wrap_dbrefs")) && SvTRUE(wrap)
   ) {
-    SV *dbref = call_sv_va(cb, 1, ret);
+    SV *class = sv_2mortal(newSVpvs("BSON::DBRef"));
+    SV *dbref = call_method_va(class, "new", 1, ret );
     return dbref;
   }
 
