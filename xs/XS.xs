@@ -949,6 +949,14 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         }
 
       }
+      else if (sv_isa(sv, "BSON::Timestamp")) {
+        SV *sec, *inc;
+
+        inc = sv_2mortal(call_perl_reader(sv, "increment"));
+        sec = sv_2mortal(call_perl_reader(sv, "seconds"));
+
+        bson_append_timestamp(bson, key, -1, SvIV(sec), SvIV(inc));
+      }
       else if (sv_isa(sv, "MongoDB::Timestamp")) {
         SV *sec, *inc;
 
@@ -1756,7 +1764,7 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     sec_sv = sv_2mortal(newSViv(sec));
     inc_sv = sv_2mortal(newSViv(inc));
 
-    value = new_object_from_pairs("MongoDB::Timestamp", "sec", sec_sv, "inc", inc_sv, NULL);
+    value = new_object_from_pairs("BSON::Timestamp", "seconds", sec_sv, "increment", inc_sv, NULL);
     break;
   }
   case BSON_TYPE_MINKEY: {
