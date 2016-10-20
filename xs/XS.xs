@@ -144,7 +144,7 @@ static stackette * check_circular_ref(void *ptr, stackette *stack);
  * bson_elem_to_sv.  That may call bson_doc_to_hashref or
  * bson_doc_to_arrayref to decode sub-containers.
  *
- * The bson_oid_to_sv function manually constructs a MongoDB::OID object to
+ * The bson_oid_to_sv function manually constructs a BSON::OID object to
  * avoid the overhead of calling its constructor.  This optimization is
  * fragile and might need to be reconsidered.
  *
@@ -771,7 +771,16 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
   else if (SvROK (sv)) {
     if (sv_isobject (sv)) {
       /* OIDs */
-      if (sv_derived_from (sv, "MongoDB::OID")) {
+      if (sv_derived_from (sv, "BSON::OID")) {
+        SV *attr = sv_2mortal(call_perl_reader(sv, "oid"));
+        char *bytes = SvPV_nolen(attr);
+        bson_oid_t oid;
+        bson_oid_init_from_data(&oid, (uint8_t*) bytes);
+
+        bson_append_oid(bson, key, -1, &oid);
+
+      }
+      else if (sv_derived_from (sv, "MongoDB::OID")) {
         SV *attr = sv_2mortal(call_perl_reader(sv, "value"));
         char *str = SvPV_nolen (attr);
         bson_oid_t oid;
@@ -1763,15 +1772,13 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
 static SV *
 bson_oid_to_sv (const bson_iter_t * iter) {
   HV *stash, *id_hv;
-  char oid_s[25];
 
   const bson_oid_t * oid = bson_iter_oid(iter);
-  bson_oid_to_string(oid, oid_s);
 
   id_hv = newHV();
-  (void)hv_stores(id_hv, "value", newSVpvn(oid_s, 24));
+  (void)hv_stores(id_hv, "oid", newSVpvn((const char *) oid->bytes, 12));
 
-  stash = gv_stashpv("MongoDB::OID", 0);
+  stash = gv_stashpv("BSON::OID", 0);
   return sv_bless(newRV_noinc((SV *)id_hv), stash);
 }
 
