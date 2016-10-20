@@ -90,34 +90,39 @@ typedef struct _stackette {
  */
 
 static SV * call_method_va(SV *self, const char *method, int num, ...);
-static SV * call_method_with_pairs(SV *self, const char *method, ...);
+static SV * call_method_with_pairs_va(SV *self, const char *method, ...);
 static SV * new_object_from_pairs(const char *klass, ...);
-static SV * _call_method_with_pairs (SV *self, const char *method, va_list args);
+static SV * call_method_with_arglist (SV *self, const char *method, va_list args);
 static SV * call_sv_va (SV *func, int num, ...);
 static SV * call_pv_va (char *func, int num, ...);
+static bool call_key_value_iter (SV *func, SV **ret );
 
 #define call_perl_reader(s,m) call_method_va(s,m,0)
 
 /* BSON encoding
  *
- * Public function perl_mongo_sv_to_bson is the entry point.  It calls one of
- * the container encoding functions, hv_to_bson, ixhash_to_bson or
- * avdoc_to_bson.  Those iterate their contents, encoding them with
- * sv_to_bson_elem.  sv_to_bson_elem delegates to various append_* functions
- * for particular types.
+ * Public function perl_mongo_sv_to_bson is the entry point.  It calls one
+ * of the container encoding functions, hv_doc_to_bson, ixhash_doc_to_bson
+ * or av_doc_to_bson.  Those iterate their contents, encoding them with
+ * sv_to_bson_elem.  sv_to_bson_elem delegates to various append_*
+ * functions for particular types.
  *
  * Other functions are utility functions used during encoding.
  */
 
-static void _hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
-static void _ixhash_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
+static void perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts);
 
-#define hvdoc_to_bson(b,d,o,s) _hv_to_bson((b),(d),(o),(s),0)
-#define hv_to_bson(b,d,o,s) _hv_to_bson((b),(d),(o),(s),1)
-#define ixhashdoc_to_bson(b,d,o,s) _ixhash_to_bson((b),(d),(o),(s),0)
-#define ixhash_to_bson(b,d,o,s) _ixhash_to_bson((b),(d),(o),(s),1)
+static void hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
+static void ixhash_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
+static void iter_src_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
+static void av_doc_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack);
 
-static void avdoc_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack);
+#define hv_doc_to_bson(b,d,o,s) hv_to_bson((b),(d),(o),(s),0)
+#define hv_elem_to_bson(b,d,o,s) hv_to_bson((b),(d),(o),(s),1)
+#define ixhash_doc_to_bson(b,d,o,s) ixhash_to_bson((b),(d),(o),(s),0)
+#define ixhash_elem_to_bson(b,d,o,s) ixhash_to_bson((b),(d),(o),(s),1)
+#define iter_doc_to_bson(b,d,o,s) iter_src_to_bson((b),(d),(o),(s),0)
+#define iter_elem_to_bson(b,d,o,s) iter_src_to_bson((b),(d),(o),(s),1)
 
 static void sv_to_bson_elem (bson_t * bson, const char *key, SV *sv, HV *opts, stackette *stack);
 
@@ -145,7 +150,10 @@ static stackette * check_circular_ref(void *ptr, stackette *stack);
  *
  */
 
+static SV * perl_mongo_bson_to_sv(const bson_t * bson, HV *opts);
+
 static SV * bson_doc_to_hashref(bson_iter_t * iter, HV *opts);
+static SV * bson_doc_to_tiedhash(bson_iter_t * iter, HV *opts);
 static SV * bson_array_to_arrayref(bson_iter_t * iter, HV *opts);
 static SV * bson_elem_to_sv(const bson_iter_t * iter, HV *opts);
 static SV * bson_oid_to_sv(const bson_iter_t * iter);
@@ -236,11 +244,11 @@ call_method_va (SV *self, const char *method, int num, ...) {
  * are NOT mortalized.  The final argument must be a NULL key. */
 
 static SV *
-call_method_with_pairs (SV *self, const char *method, ...) {
+call_method_with_pairs_va (SV *self, const char *method, ...) {
   SV *ret;
   va_list args;
   va_start (args, method);
-  ret = _call_method_with_pairs(self, method, args);
+  ret = call_method_with_arglist(self, method, args);
   va_end(args);
   return ret;
 }
@@ -254,13 +262,13 @@ new_object_from_pairs(const char *klass, ...) {
   SV *ret;
   va_list args;
   va_start (args, klass);
-  ret = _call_method_with_pairs(sv_2mortal(newSVpv(klass,0)), "new", args);
+  ret = call_method_with_arglist(sv_2mortal(newSVpv(klass,0)), "new", args);
   va_end(args);
   return ret;
 }
 
 static SV *
-_call_method_with_pairs (SV *self, const char *method, va_list args) {
+call_method_with_arglist (SV *self, const char *method, va_list args) {
   dSP;
   SV *ret = NULL;
   char *key;
@@ -327,6 +335,40 @@ call_sv_va (SV *func, int num, ...) {
   return ret;
 }
 
+
+/* Call func and return key value pairs.
+ *
+ * ret is address of (SV*)[2] where key and value will be put.
+ *
+ * return value is true if key is defined and false otherwise.
+ */
+static bool
+call_key_value_iter (SV *func, SV **ret ) {
+  dSP;
+  I32 count;
+
+  ENTER;
+  SAVETMPS;
+  PUSHMARK (SP);
+  PUTBACK;
+
+  count = call_sv(func, G_ARRAY);
+
+  if ( count == 0 ) {
+    return false;
+  }
+
+  SPAGAIN;
+  SvREFCNT_inc (ret[1] = POPs);
+  SvREFCNT_inc (ret[0] = POPs);
+
+  PUTBACK;
+  FREETMPS;
+  LEAVE;
+
+  return SvOK(ret[0]);
+}
+
 static SV *
 call_pv_va (char *func, int num, ...) {
   dSP;
@@ -375,10 +417,10 @@ perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts) {
   if ( ! sv_isobject(sv) ) {
     switch ( SvTYPE(SvRV(sv)) ) {
       case SVt_PVHV:
-        hvdoc_to_bson (bson, sv, opts, EMPTY_STACK);
+        hv_doc_to_bson (bson, sv, opts, EMPTY_STACK);
         break;
       case SVt_PVAV:
-        avdoc_to_bson(bson, sv, opts, EMPTY_STACK);
+        av_doc_to_bson(bson, sv, opts, EMPTY_STACK);
         break;
       default:
         sv_dump(sv);
@@ -393,23 +435,57 @@ perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts) {
     class = HvNAME(SvSTASH(obj));
 
     if ( strEQ(class, "Tie::IxHash") ) {
-      ixhashdoc_to_bson(bson, sv, opts, EMPTY_STACK);
+      ixhash_doc_to_bson(bson, sv, opts, EMPTY_STACK);
+    }
+    else if ( strEQ(class, "BSON::Doc") ) {
+      iter_doc_to_bson(bson, sv, opts, EMPTY_STACK);
+    }
+    else if ( strEQ(class, "BSON::Raw") ) {
+      STRLEN str_len;
+      SV *encoded;
+      const char *bson_str;
+      bson_t *child;
+
+      encoded = call_perl_reader(sv, "bson");
+      bson_str = SvPV(encoded, str_len);
+      child = bson_new_from_data((uint8_t*) bson_str, str_len);
+      bson_concat(bson, child);
+      bson_destroy(child);
     }
     else if ( strEQ(class, "MongoDB::BSON::_EncodedDoc") ) {
-        STRLEN str_len;
-        SV **svp;
-        SV *encoded;
-        const char *bson_str;
-        bson_t *child;
+      STRLEN str_len;
+      SV **svp;
+      SV *encoded;
+      const char *bson_str;
+      bson_t *child;
 
-        encoded = _hv_fetchs_sv((HV *)obj, "bson");
-        bson_str = SvPV(encoded, str_len);
-        child = bson_new_from_data((uint8_t*) bson_str, str_len);
-        bson_concat(bson, child);
-        bson_destroy(child);
+      encoded = _hv_fetchs_sv((HV *)obj, "bson");
+      bson_str = SvPV(encoded, str_len);
+      child = bson_new_from_data((uint8_t*) bson_str, str_len);
+      bson_concat(bson, child);
+      bson_destroy(child);
+    }
+    else if ( strEQ(class, "MongoDB::BSON::Raw") ) {
+      SV *str_sv;
+      char *str;
+      STRLEN str_len;
+      bson_t *child;
+
+      str_sv = SvRV(sv);
+
+      // check type ok
+      if (!SvPOK(str_sv)) {
+        croak("MongoDB::BSON::Raw must be a blessed string reference");
+      }
+
+      str = SvPV(str_sv, str_len);
+
+      child = bson_new_from_data((uint8_t*) str, str_len);
+      bson_concat(bson, child);
+      bson_destroy(child);
     }
     else if (SvTYPE(obj) == SVt_PVHV) {
-      hvdoc_to_bson(bson, sv, opts, EMPTY_STACK);
+      hv_doc_to_bson(bson, sv, opts, EMPTY_STACK);
     }
     else {
       croak ("type (%s) unhandled", class);
@@ -418,7 +494,7 @@ perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts) {
 }
 
 static void
-_hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
+hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
   HE *he;
   HV *hv;
   const char *first_key = NULL;
@@ -476,7 +552,7 @@ _hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
  * within* a document.
  */
 static void
-avdoc_to_bson (bson_t * bson, SV *sv, HV *opts, stackette *stack) {
+av_doc_to_bson (bson_t * bson, SV *sv, HV *opts, stackette *stack) {
     I32 i;
     HV* seen;
     const char *first_key = NULL;
@@ -522,7 +598,7 @@ avdoc_to_bson (bson_t * bson, SV *sv, HV *opts, stackette *stack) {
 }
 
 static void
-_ixhash_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
+ixhash_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
   int i;
   SV **keys_sv, **values_sv;
   AV *array, *keys, *values;
@@ -572,6 +648,48 @@ _ixhash_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) 
   }
 
   /* free the ixhash elem */
+  Safefree(stack);
+}
+
+/* Construct a BSON document from an iterator code ref that returns key
+ * value pairs */
+
+static void
+iter_src_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
+  int i;
+  SV *iter;
+  SV * kv[2];
+  const char *first_key = NULL;
+
+  /* check if we're in an infinite loop */
+  if (!(stack = check_circular_ref(SvRV(sv), stack))) {
+    croak("circular ref: %s", SvPV_nolen(sv));
+  }
+
+  if ( ! subdoc ) {
+    first_key = maybe_append_first_key(bson, opts, stack);
+  }
+
+  iter = sv_2mortal(call_perl_reader(sv, "_iterator"));
+  if ( !SvROK(iter) || SvTYPE(SvRV(iter)) != SVt_PVCV ) {
+    croak("invalid iterator from %s", SvPV_nolen(sv));
+  }
+
+  while ( call_key_value_iter( iter, kv ) ) {
+    STRLEN len;
+    const char *str;
+
+    str = SvPVutf8(kv[0], len);
+    assert_valid_key(str,len);
+
+    if (first_key && strcmp(str, first_key) == 0) {
+        continue;
+    }
+
+    sv_to_bson_elem(bson, str, kv[1], opts, stack);
+  }
+
+  /* free the stack elem for sv */
   Safefree(stack);
 }
 
@@ -688,8 +806,47 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_t child;
 
         bson_append_document_begin(bson, key, -1, &child);
-        ixhash_to_bson(&child, sv, opts, stack);
+        ixhash_elem_to_bson(&child, sv, opts, stack);
         bson_append_document_end(bson, &child);
+      }
+      else if (sv_isa(sv, "BSON::Doc")) {
+        bson_t child;
+
+        bson_append_document_begin(bson, key, -1, &child);
+        iter_elem_to_bson(&child, sv, opts, stack);
+        bson_append_document_end(bson, &child);
+      }
+      else if (sv_isa(sv, "BSON::Raw")) {
+        STRLEN str_len;
+        SV *encoded;
+        const char *bson_str;
+        bson_t *child;
+
+        encoded = call_perl_reader(sv, "bson");
+        bson_str = SvPV(encoded, str_len);
+
+        child = bson_new_from_data((uint8_t*) bson_str, str_len);
+        bson_append_document(bson, key, -1, child);
+        bson_destroy(child);
+      }
+      else if (sv_isa(sv, "MongoDB::BSON::Raw")) {
+        SV *str_sv;
+        char *str;
+        STRLEN str_len;
+        bson_t *child;
+
+        str_sv = SvRV(sv);
+
+        // check type ok
+        if (!SvPOK(str_sv)) {
+          croak("MongoDB::BSON::Raw must be a blessed string reference");
+        }
+
+        str = SvPV(str_sv, str_len);
+
+        child = bson_new_from_data((uint8_t*) str, str_len);
+        bson_append_document(bson, key, -1, child);
+        bson_destroy(child);
       }
       /* Time::Moment */
       else if (sv_isa(sv, "Time::Moment")) {
@@ -742,7 +899,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_t child;
         dbref = sv_2mortal(call_perl_reader(sv, "_ordered"));
         bson_append_document_begin(bson, key, -1, &child);
-        ixhash_to_bson(&child, dbref, opts, stack);
+        ixhash_elem_to_bson(&child, dbref, opts, stack);
         bson_append_document_end(bson, &child);
       }
 
@@ -775,7 +932,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         if (SvOK(scope)) {
             bson_t * child = bson_new();
-            hv_to_bson(child, scope, opts, EMPTY_STACK);
+            hv_elem_to_bson(child, scope, opts, EMPTY_STACK);
             bson_append_code_with_scope(bson, key, -1, code_str, child);
             bson_destroy(child);
         } else {
@@ -898,7 +1055,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_t child;
         bson_append_document_begin(bson, key, -1, &child);
         /* don't add a _id to inner objs */
-        hv_to_bson (&child, sv, opts, stack);
+        hv_elem_to_bson (&child, sv, opts, stack);
         bson_append_document_end(bson, &child);
         break;
       }
@@ -1217,8 +1374,14 @@ static SV *
 bson_doc_to_hashref(bson_iter_t * iter, HV *opts) {
   SV **svp;
   SV *wrap;
+  SV *ordered;
   SV *ret;
   HV *hv = newHV();
+
+  /* delegate if 'ordered' option is true */
+  if ( (ordered = _hv_fetchs_sv(opts, "ordered")) && SvTRUE(ordered) ) {
+    return bson_doc_to_tiedhash(iter, opts);
+  }
 
   int is_dbref = 1;
   int key_num  = 0;
@@ -1247,6 +1410,59 @@ bson_doc_to_hashref(bson_iter_t * iter, HV *opts) {
   }
 
   ret = newRV_noinc ((SV *)hv);
+
+  /* XXX shouldn't need to limit to size 3 */
+  if ( key_num >= 2 && is_dbref == 1
+      && (wrap = _hv_fetchs_sv(opts, "wrap_dbrefs")) && SvTRUE(wrap)
+  ) {
+    SV *class = sv_2mortal(newSVpvs("BSON::DBRef"));
+    SV *dbref = call_method_va(class, "new", 1, ret );
+    return dbref;
+  }
+
+  return ret;
+}
+
+static SV *
+bson_doc_to_tiedhash(bson_iter_t * iter, HV *opts) {
+  SV **svp;
+  SV *wrap;
+  SV *ret;
+  SV *ixhash;
+  SV *tie;
+  SV *key;
+  HV *hv = newHV();
+
+  int is_dbref = 1;
+  int key_num  = 0;
+
+  ixhash = new_object_from_pairs("Tie::IxHash",NULL);
+
+  while (bson_iter_next(iter)) {
+    const char *name;
+    SV *value;
+
+    name = bson_iter_key(iter);
+
+    if ( ! is_utf8_string((const U8*)name,strlen(name))) {
+      croak( "Invalid UTF-8 detected while decoding BSON" );
+    }
+
+    key_num++;
+    /* check if this is a DBref. We must see the keys
+       $ref, $id, and optionally $db in that order, with no extra keys */
+    if ( key_num == 1 && strcmp( name, "$ref" ) ) is_dbref = 0;
+    if ( key_num == 2 && is_dbref == 1 && strcmp( name, "$id" ) ) is_dbref = 0;
+
+    /* get key and value and store into hash */
+    key = sv_2mortal( newSVpvn(name, strlen(name)) );
+    value = bson_elem_to_sv(iter, opts);
+    call_method_va(ixhash, "STORE", 2, key, value);
+  }
+
+  /* tie the ixhash to the return hash */
+  sv_magic((SV*) hv, ixhash, PERL_MAGIC_tied, NULL, 0);
+  ret = newRV_noinc((SV*) hv);
 
   /* XXX shouldn't need to limit to size 3 */
   if ( key_num >= 2 && is_dbref == 1
@@ -1418,7 +1634,7 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
       );
     } else if ( strcmp( dt_type, "DateTime" ) == 0 ) {
       SV *epoch = sv_2mortal(newSVnv((NV)msec / 1000));
-      value = call_method_with_pairs(
+      value = call_method_with_pairs_va(
         sv_2mortal(newSVpv(dt_type,0)), "from_epoch", "epoch", epoch, NULL
       );
     } else {
