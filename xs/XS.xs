@@ -857,6 +857,13 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_append_document(bson, key, -1, child);
         bson_destroy(child);
       }
+      else if (sv_isa(sv, "BSON::Time")) {
+        SV *ms = sv_2mortal(call_perl_reader(sv, "value"));
+
+        /* XXX ms is maybe a 64bit int or maybe a Math::BigInt */
+
+        bson_append_date_time(bson, key, -1, (int64_t)SvIV(ms));
+      }
       /* Time::Moment */
       else if (sv_isa(sv, "Time::Moment")) {
         SV *sec = sv_2mortal(call_perl_reader(sv, "epoch"));
@@ -883,7 +890,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_append_date_time(bson, key, -1, (int64_t)SvIV(sec)*1000+SvIV(ms));
       }
       /* DateTime::TIny */
-      else if (sv_isa(sv, "DateTime::Tiny")) { 
+      else if (sv_isa(sv, "DateTime::Tiny")) {
         struct tm t;
         time_t epoch_secs = time(NULL);
         int64_t epoch_ms;
@@ -902,8 +909,12 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         epoch_ms = (int64_t)epoch_secs*1000;
         bson_append_date_time(bson, key, -1, epoch_ms);
       }
+      else if (sv_isa(sv, "Mango::BSON::Time")) {
+        SV *ms = _hv_fetchs_sv((HV *)SvRV(sv), "time");
+        bson_append_date_time(bson, key, -1, (int64_t)SvIV(ms));
+      }
       /* DBRef */
-      else if (sv_isa(sv, "BSON::DBRef") || sv_isa(sv, "MongoDB::DBRef")) { 
+      else if (sv_isa(sv, "BSON::DBRef") || sv_isa(sv, "MongoDB::DBRef")) {
         SV *dbref;
         bson_t child;
         dbref = sv_2mortal(call_perl_reader(sv, "_ordered"));
@@ -1056,7 +1067,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         append_regex(bson, key, re, sv);
       }
-      else if (sv_isa(sv, "BSON::Regex") || sv_isa(sv, "MongoDB::BSON::Regexp") ) { 
+      else if (sv_isa(sv, "BSON::Regex") || sv_isa(sv, "MongoDB::BSON::Regexp") ) {
         /* Abstract regexp object */
         SV *pattern, *flags;
         pattern = sv_2mortal(call_perl_reader( sv, "pattern" ));
@@ -1314,7 +1325,7 @@ get_regex_flags(char * flags, SV *sv) {
     if ( re_string[i] == 'i'  ||
          re_string[i] == 'm'  ||
          re_string[i] == 'x'  ||
-         re_string[i] == 's' ) { 
+         re_string[i] == 's' ) {
       flags[f++] = re_string[i];
     } else if ( re_string[i] == ':' ) {
       break;
@@ -1662,44 +1673,28 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
   }
   case BSON_TYPE_DATE_TIME: {
     const int64_t msec = bson_iter_date_time(iter);
-    SV *tempsv;
-    const char *dt_type = NULL;
+    SV *dt_type_sv;
 
-    if ( (tempsv = _hv_fetchs_sv(opts, "dt_type")) && SvOK(tempsv) ) {
-      dt_type = SvPV_nolen(tempsv);
+    SV *obj = new_object_from_pairs("BSON::Time", "value", sv_2mortal(newSViv(msec)), NULL);
+
+    if ( (dt_type_sv = _hv_fetchs_sv(opts, "dt_type")) && SvOK(dt_type_sv) ) {
+      char *dt_type = SvPV_nolen(dt_type_sv);
+      if ( strEQ(dt_type, "BSON::Time") ) {
+          /* already BSON::Time */
+      } else if ( strEQ(dt_type, "Time::Moment") ) {
+          value = call_perl_reader(sv_2mortal(obj),"as_time_moment");
+      } else if ( strEQ(dt_type, "DateTime") ) {
+          value = call_perl_reader(sv_2mortal(obj),"as_datetime");
+      } else if ( strEQ(dt_type, "DateTime::Tiny") ) {
+          value = call_perl_reader(sv_2mortal(obj),"as_datetime_tiny");
+      } else if ( strEQ(dt_type, "Mango::BSON::Time") ) {
+          value = call_perl_reader(sv_2mortal(obj),"as_mango_time");
+      } else {
+          croak( "Invalid dt_type \"%s\"", dt_type );
+      }
     }
-
-    if ( dt_type == NULL ) { 
-      /* raw epoch */
-      value = (msec % 1000 == 0) ? newSViv(msec / 1000) : newSVnv((double) msec / 1000);
-    } else if ( strcmp( dt_type, "Time::Moment" ) == 0 ) {
-      SV *tm = sv_2mortal(newSVpvs("Time::Moment"));
-      SV *sec = sv_2mortal(newSViv(msec / 1000));
-      SV *nos = sv_2mortal(newSViv((msec % 1000) * 1000000));
-      value = call_method_va(tm, "from_epoch", 2, sec, nos);
-    } else if ( strcmp( dt_type, "DateTime::Tiny" ) == 0 ) {
-      time_t epoch;
-      struct tm *dt;
-      epoch = msec / 1000;
-      dt = gmtime( &epoch );
-
-      value = new_object_from_pairs(
-        dt_type,
-        "year",   sv_2mortal(newSViv( dt->tm_year + 1900 )),
-        "month",  sv_2mortal(newSViv( dt->tm_mon  +    1 )),
-        "day",    sv_2mortal(newSViv( dt->tm_mday )),
-        "hour",   sv_2mortal(newSViv( dt->tm_hour )),
-        "minute", sv_2mortal(newSViv( dt->tm_min )),
-        "second", sv_2mortal(newSViv( dt->tm_sec )),
-        NULL
-      );
-    } else if ( strcmp( dt_type, "DateTime" ) == 0 ) {
-      SV *epoch = sv_2mortal(newSVnv((NV)msec / 1000));
-      value = call_method_with_pairs_va(
-        sv_2mortal(newSVpv(dt_type,0)), "from_epoch", "epoch", epoch, NULL
-      );
-    } else {
-      croak( "Invalid dt_type \"%s\"", dt_type );
+    else {
+      value = obj;
     }
 
     break;
