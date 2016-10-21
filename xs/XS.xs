@@ -130,6 +130,10 @@ const char * maybe_append_first_key(bson_t *bson, HV *opts, stackette *stack);
 static void append_binary(bson_t * bson, const char * key, bson_subtype_t subtype, SV * sv);
 static void append_regex(bson_t * bson, const char *key, REGEXP *re, SV * sv);
 static void append_decomposed_regex(bson_t *bson, const char *key, const char *pattern, const char *flags);
+static void append_string_or_number(bson_t * bson, const char *key, SV * sv, bool is_string);
+static void append_number_or_string(bson_t * bson, const char *key, SV * sv);
+static void append_fit_int(bson_t * bson, const char *key, SV * sv);
+static void append_utf8(bson_t * bson, const char *key, SV * sv);
 
 static void assert_valid_key(const char* str, STRLEN len);
 static const char * bson_key(const char * str, HV *opts);
@@ -688,7 +692,7 @@ bson_key(const char * str, HV *opts) {
 
     for (i=0; i<len; i++) {
       if (strchr(str, invalid[i])) {
-        croak("documents for storage cannot contain the '%c' character",invalid[i]);
+        croak("key '%s' has invalid character(s) '%s'", str, invalid);
       }
     }
   }
@@ -1072,7 +1076,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
     }
   } else {
     SV *tempsv;
-    int is_string = 0, aggressively_number = 0;
+    bool is_string = false;
 
 #if PERL_REVISION==5 && PERL_VERSION<=10
     /* Flags usage changed in Perl 5.10.1.  In Perl 5.8, there is no way to
@@ -1106,67 +1110,11 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 #endif
 
     if ( (tempsv = _hv_fetchs_sv(opts, "prefer_numeric")) && SvTRUE (tempsv) ) {
-      aggressively_number = looks_like_number(sv);
-    }
-
-    switch (SvTYPE (sv)) {
-      /* double */
-    case SVt_PV:
-    case SVt_NV:
-    case SVt_PVNV: {
-      if ((aggressively_number & IS_NUMBER_NOT_INT) || (!is_string && SvNOK(sv))) {
-        bson_append_double(bson, key, -1, (double)SvNV(sv));
-        break;
-      }
-    }
-      /* int */
-    case SVt_IV:
-    case SVt_PVIV:
-    case SVt_PVLV:
-    case SVt_PVMG: {
-      if ((aggressively_number & IS_NUMBER_NOT_INT) || (!is_string && SvNOK(sv))) {
-        bson_append_double(bson, key, -1, (double)SvNV(sv));
-        break;
-      }
-
-      /* if it's publicly an int OR (privately an int AND not publicly a string) */
-      if (aggressively_number || (!is_string && (SvIOK(sv) || (SvIOKp(sv) && !SvPOK(sv))))) {
-#if defined(MONGO_USE_64_BIT_INT)
-        IV i = SvIV(sv);
-        /* intentionally use -INT32_MAX to avoid the weird most negative number */
-        if ( i >= -INT32_MAX && i <= INT32_MAX) {
-          bson_append_int32(bson, key, -1, (int)i);
-        }
-        else {
-          bson_append_int64(bson, key, -1, (int64_t)i);
-        }
-#else
-        bson_append_int32(bson, key, -1, (int)SvIV(sv));
-#endif
-        break;
-      }
-
-      /* string */
-      if (sv_len (sv) != strlen (SvPV_nolen (sv))) {
-        append_binary(bson, key, SUBTYPE_BINARY, sv);
-      }
-      else {
-        STRLEN len;
-        const char *str = SvPVutf8(sv, len);
-
-        if ( ! is_utf8_string((const U8*)str,len)) {
-          croak( "Invalid UTF-8 detected while encoding BSON" );
-        }
-
-        bson_append_utf8(bson, key, -1, str, len);
-      }
-      break;
-    }
-    default:
-      croak ("For key '%s', can't encode value '%s'", key, SvPV_nolen(sv));
+      append_number_or_string(bson, key, sv);
+    } else {
+      append_string_or_number(bson, key, sv, is_string);
     }
   }
-
 }
 
 const char *
@@ -1237,6 +1185,68 @@ append_binary(bson_t * bson, const char * key, bson_subtype_t subtype, SV * sv) 
     uint8_t * bytes = (uint8_t *) SvPVbyte(sv, len);
 
     bson_append_binary(bson, key, -1, subtype, bytes, len);
+}
+
+static void
+append_fit_int(bson_t * bson, const char *key, SV * sv) {
+#if defined(MONGO_USE_64_BIT_INT)
+  IV i = SvIV(sv);
+  if ( i >= INT32_MIN && i <= INT32_MAX) {
+    bson_append_int32(bson, key, -1, (int32_t)i);
+  }
+  else {
+    bson_append_int64(bson, key, -1, (int64_t)i);
+  }
+#else
+  bson_append_int32(bson, key, -1, (int32_t)SvIV(sv));
+#endif
+  return;
+}
+
+static void
+append_utf8(bson_t * bson, const char *key, SV * sv) {
+  STRLEN len;
+  const char *str = SvPVutf8(sv, len);
+
+  if ( ! is_utf8_string((const U8*)str,len)) {
+    croak( "Invalid UTF-8 detected while encoding BSON" );
+  }
+
+  bson_append_utf8(bson, key, -1, str, len);
+  return;
+}
+
+static void
+append_number_or_string(bson_t * bson, const char *key, SV * sv) {
+  I32 is_number = looks_like_number(sv);
+
+  if ( is_number & IS_NUMBER_NOT_INT ) { /* double */
+    bson_append_double(bson, key, -1, (double)SvNV(sv));
+  } else if ( is_number ) { /* integer */
+    append_fit_int(bson, key, sv);
+  } else  {
+    append_utf8(bson, key, sv);
+  }
+
+  return;
+}
+
+static void
+append_string_or_number(bson_t * bson, const char *key, SV * sv, bool is_string) {
+  I32 is_number = looks_like_number(sv);
+
+  if ( SvPOK(sv) || is_string ) {
+    append_utf8(bson, key, sv);
+  } else if ( SvNOK(sv) ) {
+    bson_append_double(bson, key, -1, (double)SvNV(sv));
+  } else if ( SvIOK(sv) ) {
+    append_fit_int(bson, key, sv);
+  } else {
+    /* string as last resort */
+    append_utf8(bson, key, sv);
+  }
+
+  return;
 }
 
 static void
