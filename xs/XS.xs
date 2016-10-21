@@ -424,7 +424,7 @@ perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts) {
         break;
       default:
         sv_dump(sv);
-        croak ("type unhandled");
+        croak ("Can't encode unhandled variable type");
     }
   }
   else {
@@ -488,7 +488,7 @@ perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts) {
       hv_doc_to_bson(bson, sv, opts, EMPTY_STACK);
     }
     else {
-      croak ("type (%s) unhandled", class);
+      croak ("Can't encode non-container of type '%s'", class);
     }
   }
 }
@@ -1094,7 +1094,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_append_decimal128(bson, key, -1, &dec);
       }
       else {
-        croak ("type (%s) unhandled", HvNAME(SvSTASH(SvRV(sv))));
+        croak ("For key '%s', can't encode value of type '%s'", key, HvNAME(SvSTASH(SvRV(sv))));
       }
     } else {
       SV *deref = SvRV(sv);
@@ -1122,8 +1122,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
             append_binary(bson, key, BSON_SUBTYPE_BINARY, deref);
           }
           else {
-            sv_dump(deref);
-            croak ("type (ref) unhandled");
+            croak ("For key '%s', can't encode value '%s'", key, SvPV_nolen(sv));
           }
         }
       }
@@ -1221,8 +1220,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
       break;
     }
     default:
-      sv_dump(sv);
-      croak ("type (sv) unhandled");
+      croak ("For key '%s', can't encode value '%s'", key, SvPV_nolen(sv));
     }
   }
 
@@ -1301,7 +1299,8 @@ append_binary(bson_t * bson, const char * key, bson_subtype_t subtype, SV * sv) 
 static void
 assert_valid_key(const char* str, STRLEN len) {
   if(strlen(str)  < len) {
-    croak("key contains null char");
+    SV *clean = call_pv_va("BSON::XS::_printable",1,sv_2mortal(newSVpvn(str,len)));
+    croak("Key '%s' contains null character", SvPV_nolen(clean));
   }
   if (len == 0) {
     croak("empty key name, did you use a $ with double quotes?");

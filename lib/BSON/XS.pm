@@ -32,6 +32,13 @@ our $_boolean_false = false;
 use XSLoader;
 XSLoader::load( "BSON::XS", $VERSION );
 
+# For errors
+sub _printable {
+    my $value = shift;
+    $value =~ s/([^[:print:]])/sprintf("\\x%02x",ord($1))/ge;
+    return $value;
+}
+
 1;
 
 __END__
