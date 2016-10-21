@@ -102,8 +102,8 @@ static bool call_key_value_iter (SV *func, SV **ret );
 /* BSON encoding
  *
  * Public function perl_mongo_sv_to_bson is the entry point.  It calls one
- * of the container encoding functions, hv_doc_to_bson, ixhash_doc_to_bson
- * or av_doc_to_bson.  Those iterate their contents, encoding them with
+ * of the container encoding functions, hv_doc_to_bson, or
+ * ixhash_doc_to_bson.  Those iterate their contents, encoding them with
  * sv_to_bson_elem.  sv_to_bson_elem delegates to various append_*
  * functions for particular types.
  *
@@ -115,7 +115,6 @@ static void perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts);
 static void hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
 static void ixhash_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
 static void iter_src_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc);
-static void av_doc_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack);
 
 #define hv_doc_to_bson(b,d,o,s) hv_to_bson((b),(d),(o),(s),0)
 #define hv_elem_to_bson(b,d,o,s) hv_to_bson((b),(d),(o),(s),1)
@@ -417,9 +416,6 @@ perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts) {
       case SVt_PVHV:
         hv_doc_to_bson (bson, sv, opts, EMPTY_STACK);
         break;
-      case SVt_PVAV:
-        av_doc_to_bson(bson, sv, opts, EMPTY_STACK);
-        break;
       default:
         sv_dump(sv);
         croak ("Can't encode unhandled variable type");
@@ -542,57 +538,6 @@ hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
 
   /* free the hv elem */
   Safefree(stack);
-}
-
-
-/* This is for an array reference of key/value pairs given as a document
- * instead of a hash reference or Tie::Ixhash, not for an array ref contained
- * within* a document.
- */
-static void
-av_doc_to_bson (bson_t * bson, SV *sv, HV *opts, stackette *stack) {
-    I32 i;
-    HV* seen;
-    const char *first_key = NULL;
-    AV *av = (AV *)SvRV (sv);
-
-    if ((av_len (av) % 2) == 0) {
-        croak ("odd number of elements in structure");
-    }
-
-    first_key = maybe_append_first_key(bson, opts, stack);
-
-    /* XXX handle first key here
-     */
-
-    seen = (HV *) sv_2mortal((SV *) newHV());
-
-    for (i = 0; i <= av_len (av); i += 2) {
-        SV **key, **val;
-        STRLEN len;
-        const char *str;
-
-        if ( !((key = av_fetch (av, i, 0)) && (val = av_fetch (av, i + 1, 0))) ) {
-            croak ("failed to fetch array element");
-        }
-
-        if ( hv_exists_ent(seen, *key, 0) ) {
-            croak ("duplicate key '%s' in array document", SvPV_nolen(*key));
-        }
-        else {
-            hv_store_ent(seen, *key, newSV(0), 0);
-        }
-
-        str = SvPVutf8(*key, len);
-        assert_valid_key(str, len);
-
-        if (first_key && strcmp(str, first_key) == 0) {
-            continue;
-        }
-
-        sv_to_bson_elem (bson, str, *val, opts, EMPTY_STACK);
-    }
-
 }
 
 static void
