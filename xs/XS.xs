@@ -139,7 +139,7 @@ static stackette * check_circular_ref(void *ptr, stackette *stack);
 
 /* BSON decoding
  *
- * Public function perl_mongo_bson_to_sv is the entry point.  It calls
+ * Public function _decode_bson is the entry point.  It calls
  * bson_doc_to_hashref, which construct a container and fills it using
  * bson_elem_to_sv.  That may call bson_doc_to_hashref or
  * bson_doc_to_arrayref to decode sub-containers.
@@ -149,8 +149,6 @@ static stackette * check_circular_ref(void *ptr, stackette *stack);
  * fragile and might need to be reconsidered.
  *
  */
-
-static SV * perl_mongo_bson_to_sv(const bson_t * bson, HV *opts);
 
 static SV * bson_doc_to_hashref(bson_iter_t * iter, HV *opts);
 static SV * bson_doc_to_tiedhash(bson_iter_t * iter, HV *opts);
@@ -1407,17 +1405,6 @@ check_circular_ref(void *ptr, stackette *stack) {
  * BSON decoding
  ********************************************************************/
 
-SV *
-perl_mongo_bson_to_sv (const bson_t * bson, HV *opts) {
-  bson_iter_t iter;
-
-  if ( ! bson_iter_init(&iter, bson) ) {
-      croak( "error creating BSON iterator" );
-  }
-
-  return bson_doc_to_hashref(&iter, opts);
-}
-
 static SV *
 bson_doc_to_hashref(bson_iter_t * iter, HV *opts) {
   SV **svp;
@@ -1819,15 +1806,14 @@ _decode_bson(msg, options)
 
     PREINIT:
         char * data;
-        const bson_t * bson;
-        bson_reader_t * reader;
-        bool reached_eof;
+        bson_t bson;
+        bson_iter_t iter;
+        size_t error_offset;
         STRLEN length;
         HV *opts;
 
     PPCODE:
-        data = SvPV_nolen(msg);
-        length = SvCUR(msg);
+        data = SvPV(msg, length);
         opts = NULL;
 
         if ( options ) {
@@ -1839,13 +1825,19 @@ _decode_bson(msg, options)
             }
         }
 
-        reader = bson_reader_new_from_data((uint8_t *)data, length);
-
-        while ((bson = bson_reader_read(reader, &reached_eof))) {
-          XPUSHs(sv_2mortal(perl_mongo_bson_to_sv(bson, opts)));
+        if ( ! bson_init_static(&bson, (uint8_t *) data, length) ) {
+          croak("Error reading BSON document");
         }
 
-        bson_reader_destroy(reader);
+        if ( ! bson_validate(&bson, BSON_VALIDATE_NONE, &error_offset) ) {
+          croak( "Invalid BSON input" );
+        }
+
+        if ( ! bson_iter_init(&iter, &bson) ) {
+          croak( "Error creating BSON iterator" );
+        }
+
+        XPUSHs(sv_2mortal(bson_doc_to_hashref(&iter, opts)));
 
 void
 _encode_bson(doc, options)
