@@ -1622,6 +1622,7 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
       char *dt_type = SvPV_nolen(dt_type_sv);
       if ( strEQ(dt_type, "BSON::Time") ) {
           /* already BSON::Time */
+          value = obj;
       } else if ( strEQ(dt_type, "Time::Moment") ) {
           value = call_perl_reader(sv_2mortal(obj),"as_time_moment");
       } else if ( strEQ(dt_type, "DateTime") ) {
@@ -1631,7 +1632,7 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
       } else if ( strEQ(dt_type, "Mango::BSON::Time") ) {
           value = call_perl_reader(sv_2mortal(obj),"as_mango_time");
       } else {
-          croak( "Invalid dt_type \"%s\"", dt_type );
+          croak( "unsupported dt_type \"%s\"", dt_type );
       }
     }
     else {
