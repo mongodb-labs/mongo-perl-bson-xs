@@ -1034,9 +1034,12 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
       else if (sv_isa(sv, "BSON::Decimal128") ) {
         bson_decimal128_t dec;
         SV *dec_sv;
+        char *bid_bytes;
 
-        dec_sv = sv_2mortal(call_perl_reader( sv, "value" ));
-        bson_decimal128_from_string( SvPV_nolen(dec_sv), &dec );
+        dec_sv = sv_2mortal(call_perl_reader( sv, "bytes" ));
+        bid_bytes = SvPV_nolen(dec_sv);
+        Copy(bid_bytes, &dec.low, 1, uint64_t);
+        Copy(bid_bytes + 8, &dec.high, 1, uint64_t);
 
         bson_append_decimal128(bson, key, -1, &dec);
       }
@@ -1220,9 +1223,9 @@ static void
 append_number_or_string(bson_t * bson, const char *key, SV * sv) {
   I32 is_number = looks_like_number(sv);
 
-  if ( is_number & IS_NUMBER_NOT_INT ) { /* double */
+  if ( SvNOK(sv) || (is_number & IS_NUMBER_NOT_INT) ) { /* double */
     bson_append_double(bson, key, -1, (double)SvNV(sv));
-  } else if ( is_number ) { /* integer */
+  } else if ( SvIOK(sv) || is_number ) { /* integer */
     append_fit_int(bson, key, sv);
   } else  {
     append_utf8(bson, key, sv);
@@ -1716,17 +1719,17 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
   }
   case BSON_TYPE_DECIMAL128: {
     bson_decimal128_t dec;
-    char bid_string[BSON_DECIMAL128_STRING];
+    char bid_bytes[16];
     SV *dec_sv;
 
     if ( ! bson_iter_decimal128(iter, &dec) ) {
       croak("could not decode decimal128");
     }
 
-    bson_decimal128_to_string(&dec, bid_string);
-
-    dec_sv = sv_2mortal(newSVpv(bid_string, 0));
-    value = new_object_from_pairs("BSON::Decimal128", "value", dec_sv, NULL);
+    Copy(&dec.low, bid_bytes, 1, uint64_t);
+    Copy(&dec.high, bid_bytes + 8, 1, uint64_t);
+    dec_sv = sv_2mortal(newSVpvn(bid_bytes, 16));
+    value = new_object_from_pairs("BSON::Decimal128", "bytes", dec_sv, NULL);
 
     break;
   }
