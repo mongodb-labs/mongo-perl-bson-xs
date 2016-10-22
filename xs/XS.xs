@@ -156,7 +156,7 @@ static stackette * check_circular_ref(void *ptr, stackette *stack);
 static SV * bson_doc_to_hashref(bson_iter_t * iter, HV *opts);
 static SV * bson_doc_to_tiedhash(bson_iter_t * iter, HV *opts);
 static SV * bson_array_to_arrayref(bson_iter_t * iter, HV *opts);
-static SV * bson_elem_to_sv(const bson_iter_t * iter, HV *opts);
+static SV * bson_elem_to_sv(const bson_iter_t * iter, const char *key, HV *opts);
 static SV * bson_oid_to_sv(const bson_iter_t * iter);
 
 /********************************************************************
@@ -1396,7 +1396,7 @@ bson_doc_to_hashref(bson_iter_t * iter, HV *opts) {
     if ( key_num == 2 && is_dbref == 1 && strcmp( name, "$id" ) ) is_dbref = 0;
 
     /* get value and store into hash */
-    value = bson_elem_to_sv(iter, opts);
+    value = bson_elem_to_sv(iter, name, opts);
     if (!hv_store (hv, name, 0-strlen(name), value, 0)) {
       croak ("failed storing value in hash");
     }
@@ -1449,7 +1449,7 @@ bson_doc_to_tiedhash(bson_iter_t * iter, HV *opts) {
 
     /* get key and value and store into hash */
     key = sv_2mortal( newSVpvn(name, strlen(name)) );
-    value = bson_elem_to_sv(iter, opts);
+    value = bson_elem_to_sv(iter, name, opts);
     call_method_va(ixhash, "STORE", 2, key, value);
   }
 
@@ -1475,9 +1475,10 @@ bson_array_to_arrayref(bson_iter_t * iter, HV *opts) {
 
   while (bson_iter_next(iter)) {
     SV *sv;
+    const char *name = bson_iter_key(iter);
 
     /* get value */
-    if ((sv = bson_elem_to_sv(iter, opts ))) {
+    if ((sv = bson_elem_to_sv(iter, name, opts ))) {
       av_push (ret, sv);
     }
   }
@@ -1486,7 +1487,7 @@ bson_array_to_arrayref(bson_iter_t * iter, HV *opts) {
 }
 
 static SV *
-bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
+bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
   SV **svp;
   SV *value = 0;
 
@@ -1563,6 +1564,19 @@ bson_elem_to_sv (const bson_iter_t * iter, HV *opts ) {
     uint32_t len;
     bson_subtype_t type;
     bson_iter_binary(iter, &type, &len, (const uint8_t **)&buf);
+
+    if ( UNLIKELY(type == BSON_SUBTYPE_BINARY_DEPRECATED) ) {
+      /* for the deprecated subtype, bson_iter_binary gives
+       * buffer pointer just past the inner length and adjusted len */
+      int32_t sublen;
+      Copy(buf-4, &sublen, 1, int32_t);
+
+      /* adjusted len must match sublen */
+      if ( sublen != len ) {
+        croak("key '%s' (binary subtype 0x02) is invalid", key);
+      }
+    }
+
     value = new_object_from_pairs(
         "BSON::Bytes",
         "data", sv_2mortal(newSVpvn(buf, len)),
