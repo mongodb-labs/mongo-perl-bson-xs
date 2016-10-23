@@ -894,7 +894,12 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         STRLEN code_len;
 
         code = sv_2mortal(call_perl_reader (sv, "code"));
-        code_str = SvPV(code, code_len);
+        code_str = SvPVutf8(code, code_len);
+
+        if ( ! is_utf8_string((const U8*)code_str,code_len)) {
+          croak( "Invalid UTF-8 detected while encoding BSON from %s", SvPV_nolen(sv) );
+        }
+
         scope = sv_2mortal(call_perl_reader(sv, "scope"));
 
         if (SvOK(scope)) {
@@ -948,14 +953,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         STRLEN str_len;
 
         str_sv = call_perl_reader(sv,"value");
-
-        str = SvPVutf8(str_sv, str_len);
-
-        if ( ! is_utf8_string((const U8*)str,str_len)) {
-          croak( "Invalid UTF-8 detected while encoding BSON from %s", SvPV_nolen(sv) );
-        }
-
-        bson_append_utf8(bson, key, -1, str, str_len);
+        append_utf8(bson, key, str_sv);
       }
       else if (sv_isa(sv, "MongoDB::BSON::String")) {
         SV *str_sv;
@@ -969,13 +967,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
           croak("MongoDB::BSON::String must be a blessed string reference");
         }
 
-        str = SvPVutf8(str_sv, str_len);
-
-        if ( ! is_utf8_string((const U8*)str,str_len)) {
-          croak( "Invalid UTF-8 detected while encoding BSON" );
-        }
-
-        bson_append_utf8(bson, key, -1, str, str_len);
+        append_utf8(bson, key, str_sv);
       }
       else if (sv_isa(sv, "BSON::Bytes") || sv_isa(sv, "MongoDB::BSON::Binary")) {
         SV *data, *subtype;
@@ -1678,7 +1670,12 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
 
     code = bson_iter_code(iter, &len);
 
+    if ( ! is_utf8_string((const U8*)code,len)) {
+      croak( "Invalid UTF-8 detected while decoding BSON" );
+    }
+
     code_sv = sv_2mortal(newSVpvn(code, len));
+    SvUTF8_on(code_sv);
 
     value = new_object_from_pairs("BSON::Code", "code", code_sv, NULL);
 
@@ -1694,7 +1691,13 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
     bson_iter_t child;
 
     code = bson_iter_codewscope(iter, &code_len, &scope_len, &scope);
+
+    if ( ! is_utf8_string((const U8*)code,code_len)) {
+      croak( "Invalid UTF-8 detected while decoding BSON" );
+    }
+
     code_sv = sv_2mortal(newSVpvn(code, code_len));
+    SvUTF8_on(code_sv);
 
     if ( ! ( bson_init_static(&bson, scope, scope_len) && bson_iter_init(&child, &bson) ) ) {
         croak("error iterating BSON type %d\n", bson_iter_type(iter));
