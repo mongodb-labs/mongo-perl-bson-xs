@@ -940,13 +940,13 @@ bson_append_code_with_scope (bson_t       *bson,         /* IN */
                              const char   *key,          /* IN */
                              int           key_length,   /* IN */
                              const char   *javascript,   /* IN */
+                             uint32_t      js_length,    /* IN */
                              const bson_t *scope)        /* IN */
 {
    static const uint8_t type = BSON_TYPE_CODEWSCOPE;
    uint32_t codews_length_le;
    uint32_t codews_length;
    uint32_t js_length_le;
-   uint32_t js_length;
 
    BSON_ASSERT (bson);
    BSON_ASSERT (key);
@@ -956,7 +956,7 @@ bson_append_code_with_scope (bson_t       *bson,         /* IN */
       key_length = (int)strlen (key);
    }
 
-   js_length = (int)strlen (javascript) + 1;
+   js_length++; /* must include null in length */
    js_length_le = BSON_UINT32_TO_LE (js_length);
 
    codews_length = 4 + 4 + js_length + scope->len;
@@ -1319,7 +1319,7 @@ bson_append_iter (bson_t            *bson,
 
          if (bson_init_static (&doc, scope, scope_len)) {
             ret = bson_append_code_with_scope (bson, key, key_length,
-                                               javascript, &doc);
+                                               javascript, len, &doc);
             bson_destroy (&doc);
          }
       }
@@ -1784,6 +1784,7 @@ bson_append_value (bson_t             *bson,
                             value->value.v_codewscope.scope_len)) {
          ret = bson_append_code_with_scope (bson, key, key_length,
                                             value->value.v_codewscope.code,
+                                            value->value.v_codewscope.code_len,
                                             &local);
          bson_destroy (&local);
       }

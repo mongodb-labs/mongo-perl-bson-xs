@@ -112,7 +112,7 @@ BSON_BEGIN_DECLS
       bson_append_code (b, key, (int) strlen (key), val)
 
 #define BSON_APPEND_CODE_WITH_SCOPE(b,key,val,scope) \
-      bson_append_code_with_scope (b, key, (int) strlen (key), val, scope)
+      bson_append_code_with_scope (b, key, (int) strlen (key), val, (int) strlen (val), scope)
 
 #define BSON_APPEND_DBPOINTER(b,key,coll,oid) \
       bson_append_dbpointer (b, key, (int) strlen (key), coll, oid)
@@ -603,6 +603,7 @@ bson_append_code_with_scope (bson_t       *bson,
                              const char   *key,
                              int           key_length,
                              const char   *javascript,
+                             uint32_t      js_length,
                              const bson_t *scope);
 
 

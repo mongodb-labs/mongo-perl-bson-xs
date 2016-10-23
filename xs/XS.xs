@@ -905,7 +905,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         if (SvOK(scope)) {
             bson_t * child = bson_new();
             hv_elem_to_bson(child, scope, opts, EMPTY_STACK);
-            bson_append_code_with_scope(bson, key, -1, code_str, child);
+            bson_append_code_with_scope(bson, key, -1, code_str, code_len, child);
             bson_destroy(child);
         } else {
             bson_append_code(bson, key, -1, code_str);
