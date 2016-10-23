@@ -952,10 +952,6 @@ bson_append_code_with_scope (bson_t       *bson,         /* IN */
    BSON_ASSERT (key);
    BSON_ASSERT (javascript);
 
-   if (bson_empty0 (scope)) {
-      return bson_append_code (bson, key, key_length, javascript);
-   }
-
    if (key_length < 0) {
       key_length = (int)strlen (key);
    }
