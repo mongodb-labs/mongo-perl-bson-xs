@@ -1258,10 +1258,6 @@ assert_valid_key(const char* str, STRLEN len) {
     SV *clean = call_pv_va("BSON::XS::_printable",1,sv_2mortal(newSVpvn(str,len)));
     croak("Key '%s' contains null character", SvPV_nolen(clean));
   }
-  if (len == 0) {
-    croak("empty key name, did you use a $ with double quotes?");
-  }
-
 }
 
 static void
