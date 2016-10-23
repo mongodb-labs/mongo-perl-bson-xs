@@ -1743,6 +1743,32 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
 
     break;
   }
+  case BSON_TYPE_DBPOINTER: {
+    uint32_t    len;
+    const char  *collection;
+    const       bson_oid_t *oid_ptr;
+    SV *coll;
+    SV *oid;
+
+    bson_iter_dbpointer(iter, &len, &collection, &oid_ptr);
+
+    if ( ! is_utf8_string((const U8*)collection,len)) {
+      croak( "Invalid UTF-8 detected while decoding BSON" );
+    }
+
+    coll = newSVpvn(collection, len);
+    SvUTF8_on(coll);
+
+    oid = new_object_from_pairs(
+      "BSON::OID", "oid", newSVpvn((const char *) oid_ptr->bytes, 12), NULL
+    );
+
+    value = new_object_from_pairs( "BSON::DBRef",
+      "ref", sv_2mortal(coll), "id", sv_2mortal(oid), NULL
+    );
+
+    break;
+  }
   default: {
     croak("type %d not supported\n", bson_iter_type(iter));
     /* give up, it'll be trouble if we keep going */
