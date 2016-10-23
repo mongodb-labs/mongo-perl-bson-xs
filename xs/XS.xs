@@ -1860,7 +1860,7 @@ _encode_bson(doc, options)
         bson_destroy(bson);
 
 SV *
-generate_oid ()
+_generate_oid ()
     PREINIT:
         bson_oid_t boid;
         char oid[25];
