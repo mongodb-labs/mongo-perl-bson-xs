@@ -13,7 +13,9 @@ my %WriteMakefileArgs = (
   "ABSTRACT" => "XS implementation of MongoDB's BSON serialization",
   "AUTHOR" => "David Golden <david\@mongodb.com>",
   "CONFIGURE_REQUIRES" => {
-    "ExtUtils::MakeMaker" => 0
+    "Config::AutoConf" => "0.22",
+    "ExtUtils::MakeMaker" => 0,
+    "Path::Tiny" => "0.052"
   },
   "DISTNAME" => "BSON-XS",
   "LICENSE" => "apache",
