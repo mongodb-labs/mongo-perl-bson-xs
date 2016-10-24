@@ -139,6 +139,7 @@ static void assert_valid_key(const char* str, STRLEN len);
 static const char * bson_key(const char * str, HV *opts);
 static void get_regex_flags(char * flags, SV *sv);
 static int64_t math_bigint_to_int64(SV *sv, const char *key);
+static SV* int64_as_SV(int64_t value);
 static stackette * check_circular_ref(void *ptr, stackette *stack);
 
 /* BSON decoding
@@ -786,10 +787,13 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
       }
       else if (sv_isa(sv, "BSON::Time")) {
         SV *ms = sv_2mortal(call_perl_reader(sv, "value"));
-
-        /* XXX ms is maybe a 64bit int or maybe a Math::BigInt */
-
-        bson_append_date_time(bson, key, -1, (int64_t)SvIV(ms));
+        if ( sv_isa(ms, "Math::BigInt") ) {
+          int64_t t = math_bigint_to_int64(ms,key);
+          bson_append_date_time(bson, key, -1, t);
+        }
+        else {
+          bson_append_date_time(bson, key, -1, (int64_t)SvIV(ms));
+        }
       }
       /* Time::Moment */
       else if (sv_isa(sv, "Time::Moment")) {
@@ -1345,6 +1349,19 @@ static int64_t math_bigint_to_int64(SV *sv, const char *key) {
   return big;
 }
 
+static SV* int64_to_math_bigint(int64_t value) {
+    char buf[22];
+    SV *class;
+    SV *as_str;
+    SV *bigint;
+
+    sprintf(buf, "%" PRIi64, value);
+    as_str = sv_2mortal(newSVpv(buf,strlen(buf)));
+    class = sv_2mortal(newSVpvs("Math::BigInt"));
+    bigint = call_method_va(class, "new", 1, as_str);
+    return bigint;
+}
+
 /**
  * checks if a ptr has been parsed already and, if not, adds it to the stack. If
  * we do have a circular ref, this function returns 0.
@@ -1629,14 +1646,7 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
       value = i;
     }
 #else
-    char buf[22];
-    SV *as_str;
-    SV *class;
-    SV *bigint;
-    sprintf(buf,"%" PRIi64,bson_iter_int64(iter));
-    as_str = sv_2mortal(newSVpv(buf,strlen(buf)));
-    class = sv_2mortal(newSVpvs("Math::BigInt"));
-    bigint = call_method_va(class, "new", 1, as_str);
+    SV *bigint = int64_to_math_bigint(bson_iter_int64(iter));
     if ( (tempsv = _hv_fetchs_sv(opts, "wrap_numbers")) && SvTRUE(tempsv) ) {
       value = new_object_from_pairs("BSON::Int64", "value", sv_2mortal(bigint), NULL);
     }
@@ -1648,9 +1658,16 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
   }
   case BSON_TYPE_DATE_TIME: {
     const int64_t msec = bson_iter_date_time(iter);
+    SV *obj;
+    SV *temp;
     SV *dt_type_sv;
 
-    SV *obj = new_object_from_pairs("BSON::Time", "value", sv_2mortal(newSViv(msec)), NULL);
+
+#if defined(MONGO_USE_64_BIT_INT)
+    obj = new_object_from_pairs("BSON::Time", "value", sv_2mortal(newSViv(msec)), NULL);
+#else
+    obj = new_object_from_pairs("BSON::Time", "value", sv_2mortal(int64_to_math_bigint(msec)), NULL);
+#endif
 
     if ( (dt_type_sv = _hv_fetchs_sv(opts, "dt_type")) && SvOK(dt_type_sv) ) {
       char *dt_type = SvPV_nolen(dt_type_sv);
