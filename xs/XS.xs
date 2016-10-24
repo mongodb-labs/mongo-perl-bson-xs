@@ -138,6 +138,7 @@ static void append_utf8(bson_t * bson, const char *key, SV * sv);
 static void assert_valid_key(const char* str, STRLEN len);
 static const char * bson_key(const char * str, HV *opts);
 static void get_regex_flags(char * flags, SV *sv);
+static int64_t math_bigint_to_int64(SV *sv, const char *key);
 static stackette * check_circular_ref(void *ptr, stackette *stack);
 
 /* BSON decoding
@@ -736,27 +737,6 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_append_oid(bson, key, -1, &oid);
 
       }
-      /* 64-bit integers */
-      else if (sv_isa(sv, "Math::BigInt")) {
-        SV *tempsv;
-        char *str;
-        char *end;
-        int64_t big;
-
-        tempsv = sv_2mortal(call_perl_reader(sv, "bstr"));
-        str = SvPV_nolen(tempsv);
-        big = Strtoll(str, &end, 10);
-
-        /* check for conversion problems */
-        if ( errno == ERANGE && ( big == LLONG_MAX || big == LLONG_MIN ) ) {
-          croak( "Math::BigInt '%s' can't fit into a 64-bit integer", str );
-        }
-        else if ( errno != 0 && big == 0 ) {
-          croak( "couldn't convert Math::BigInt '%s' to 64-bit integer", str );
-        }
-
-        bson_append_int64(bson, key, -1, big);
-      }
       /* Tie::IxHash */
       else if (sv_isa(sv, "Tie::IxHash")) {
         bson_t child;
@@ -1014,8 +994,25 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         append_decomposed_regex( bson, key, SvPV_nolen( pattern ), SvPV_nolen( flags ) );
       }
+      /* 64-bit integers */
+      else if (sv_isa(sv, "Math::BigInt")) {
+        bson_append_int64(bson, key, -1, math_bigint_to_int64(sv,key));
+      }
       else if (sv_isa(sv, "BSON::Int64") ) {
+        SV *v = call_perl_reader(sv, "value");
+
+        if ( SvROK(v) ) {
+          /* delegate to wrapped value type */
+          return sv_to_bson_elem(bson,in_key,v,opts,stack);
+        }
+
         bson_append_int64(bson, key, -1, (int64_t)SvIV(sv));
+      }
+      else if (sv_isa(sv, "Math::Int64")) {
+        uint64_t v_int;
+        SV *v_sv = call_pv_va("Math::Int64::int64_to_native",1,sv);
+        Copy(SvPVbyte_nolen(v_sv), &v_int, 1, uint64_t);
+        bson_append_int64(bson, key, -1, v_int);
       }
       else if (sv_isa(sv, "BSON::Int32") ) {
         bson_append_int32(bson, key, -1, (int32_t)SvIV(sv));
@@ -1323,6 +1320,30 @@ get_regex_flags(char * flags, SV *sv) {
 #endif
 }
 
+/* Converts Math::BigInt to int64_t; sv must be Math::BigInt */
+static int64_t math_bigint_to_int64(SV *sv, const char *key) {
+  SV *tempsv;
+  char *str;
+  int64_t big;
+  char *end = NULL;
+
+  tempsv = sv_2mortal(call_perl_reader(sv, "bstr"));
+  str = SvPV_nolen(tempsv);
+  big = Strtoll(str, &end, 10);
+
+  /* check for conversion problems */
+  if ( end && (*end != '\0') ) {
+    if ( errno == ERANGE && ( big == LLONG_MAX || big == LLONG_MIN ) ) {
+      croak( "For key '%s', Math::BigInt '%s' can't fit into a 64-bit integer", key, str );
+    }
+    else {
+      croak( "For key '%s', couldn't convert Math::BigInt '%s' to 64-bit integer", key, str );
+    }
+  }
+
+  return big;
+}
+
 /**
  * checks if a ptr has been parsed already and, if not, adds it to the stack. If
  * we do have a circular ref, this function returns 0.
@@ -1597,8 +1618,8 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
     break;
   }
   case BSON_TYPE_INT64: {
-#if defined(MONGO_USE_64_BIT_INT)
     SV *tempsv;
+#if defined(MONGO_USE_64_BIT_INT)
     SV *i = newSViv(bson_iter_int64(iter));
     if ( (tempsv = _hv_fetchs_sv(opts, "wrap_numbers")) && SvTRUE(tempsv) ) {
       value = new_object_from_pairs("BSON::Int64", "value", sv_2mortal(i), NULL);
@@ -1609,11 +1630,18 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
 #else
     char buf[22];
     SV *as_str;
-    SV *big_int;
+    SV *class;
+    SV *bigint;
     sprintf(buf,"%" PRIi64,bson_iter_int64(iter));
-    as_str = sv_2mortal(newSVpv(buf,0));
-    big_int = sv_2mortal(newSVpvs("Math::BigInt"));
-    value = call_method_va(big_int, "new", 1, as_str);
+    as_str = sv_2mortal(newSVpv(buf,strlen(buf)));
+    class = sv_2mortal(newSVpvs("Math::BigInt"));
+    bigint = call_method_va(class, "new", 1, as_str);
+    if ( (tempsv = _hv_fetchs_sv(opts, "wrap_numbers")) && SvTRUE(tempsv) ) {
+      value = new_object_from_pairs("BSON::Int64", "value", sv_2mortal(bigint), NULL);
+    }
+    else {
+      value = bigint;
+    }
 #endif
     break;
   }
