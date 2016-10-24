@@ -525,7 +525,7 @@ hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
      * so we're using hv_fetch
      */
     if ((hval = hv_fetch(hv, key, utf8 ? -len : len, 0)) == 0) {
-      croak("could not find hash value for key %s, len:%lu", key, len);
+      croak("could not find hash value for key %s, len:%lu", key, (long unsigned int)len);
     }
     if (!utf8) {
       key = (const char *) bytes_to_utf8((U8 *)key, &len);
@@ -1329,6 +1329,7 @@ static int64_t math_bigint_to_int64(SV *sv, const char *key) {
 
   tempsv = sv_2mortal(call_perl_reader(sv, "bstr"));
   str = SvPV_nolen(tempsv);
+  errno = 0;
   big = Strtoll(str, &end, 10);
 
   /* check for conversion problems */
