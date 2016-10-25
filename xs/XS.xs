@@ -1909,10 +1909,8 @@ SV *
 _generate_oid ()
     PREINIT:
         bson_oid_t boid;
-        char oid[25];
     CODE:
         bson_oid_init(&boid, NULL);
-        bson_oid_to_string(&boid, oid);
-        RETVAL = newSVpvn(oid, 24);
+        RETVAL = newSVpvn((const char *) boid.bytes, 12);
     OUTPUT:
         RETVAL
