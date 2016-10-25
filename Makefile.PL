@@ -51,7 +51,7 @@ my %WriteMakefileArgs = (
     "lib" => 0,
     "utf8" => 0
   },
-  "VERSION" => "v0.1.0",
+  "VERSION" => "v0.2.0",
   "XS" => {
     "xs/XS.xs" => "xs/XS.c"
   },
