@@ -1148,7 +1148,7 @@ append_decomposed_regex(bson_t *bson, const char *key, const char *pattern, cons
 
 static void
 append_regex(bson_t * bson, const char *key, REGEXP *re, SV * sv) {
-  char flags[]     = {0,0,0,0,0};
+  char flags[]     = {0,0,0,0,0,0,0}; /* space for imxslu + \0 */
   char *buf;
   int i, j;
 
@@ -1269,6 +1269,8 @@ get_regex_flags(char * flags, SV *sv) {
     if ( re_string[i] == 'i'  ||
          re_string[i] == 'm'  ||
          re_string[i] == 'x'  ||
+         re_string[i] == 'l'  ||
+         re_string[i] == 'u'  ||
          re_string[i] == 's' ) {
       flags[f++] = re_string[i];
     } else if ( re_string[i] == ':' ) {
@@ -1303,18 +1305,17 @@ get_regex_flags(char * flags, SV *sv) {
   for ( i = 0; i < sizeof( flags_tmp ); i++ ) {
     if ( flags_tmp[i] == 0 ) break;
 
-    /* MongoDB supports only flags /imxs, so warn if we get anything else and discard them. */
+    /* MongoDB supports only flags /imxslu */
     if ( flags_tmp[i] == 'i' ||
          flags_tmp[i] == 'm' ||
          flags_tmp[i] == 'x' ||
+         flags_tmp[i] == 'l' ||
+         flags_tmp[i] == 'u' ||
          flags_tmp[i] == 's' ) {
       flags[f++] = flags_tmp[i];
     }
-    else if ( flags_tmp[i] == 'u' ) {
-      /* do nothing as this is default */
-    }
     else {
-      warn( "stripped unsupported regex flag /%c from MongoDB regex\n", flags_tmp[i] );
+      /* do nothing; just ignore it */
     }
   }
 
