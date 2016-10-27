@@ -233,5 +233,68 @@ HERE
     return \%conf;
 }
 
-1;
+sub configure {
+    my $mm_conf = shift;
 
+    my $ccflags = $mm_conf->{CCFLAGS} || $Config{ccflags};
+    $ccflags = "" unless defined $ccflags;
+
+    my $libs = $mm_conf->{LIBS};
+    $libs = "" unless defined $libs;
+
+    my $ldflags = $mm_conf->{LDFLAGS};
+    $ldflags = "" unless defined $ldflags;
+
+    $ccflags .= " -Wall -Wextra -Wuninitialized -Wdeclaration-after-statement"
+      if HAS_GCC() && ( $ENV{AUTHOR_TESTING} || $ENV{AUTOMATED_TESTING} );
+
+    # Perl on older Centos doesn't come with this by default
+    $ccflags .= " -D_GNU_SOURCE"
+      if HAS_GCC() && $ccflags !~ /-D_GNU_SOURCE/;
+
+    # openbsd needs threaded perl *or* single-threaded but with libpthread, so
+    # we check specifically for that
+    if ( $^O eq 'openbsd' ) {
+        my $has_libpthread = qx{/usr/bin/ldd $Config{perlpath}} =~ /libpthread/;
+        die "OS unsupported: OpenBSD support requires a perl linked with libpthread"
+          unless $has_libpthread;
+    }
+
+    # check for 64-bit
+    if ( $Config{use64bitint} ) {
+        $ccflags .= " -DMONGO_USE_64_BIT_INT";
+    }
+
+    # check for big-endian
+    my $endianess = $Config{byteorder};
+    if ( $endianess == 4321 || $endianess == 87654321 ) {
+        $ccflags .= " -DMONGO_BIG_ENDIAN=1 ";
+        if ( $] lt '5.010' ) {
+            die "OS unsupported: Perl 5.10 or greater is required for big-endian platforms";
+        }
+    }
+
+    # needed to compile bson library
+    $ccflags .= " -DBSON_COMPILATION ";
+
+    my $conf = configure_bson();
+
+    if ( $conf->{BSON_WITH_OID32_PT} || $conf->{BSON_WITH_OID64_PT} ) {
+        my $pthread = $^O eq 'solaris' ? " -pthreads " : " -pthread ";
+        $ccflags .= $pthread;
+        $ldflags .= $pthread;
+    }
+
+    if ( $conf->{BSON_HAVE_CLOCK_GETTIME} ) {
+        $libs .= " -lrt";
+    }
+
+    $mm_conf->{INC}     = "-I. -Ibson";
+    $mm_conf->{CCFLAGS} = $ccflags;
+    $mm_conf->{LIBS}    = $libs;
+    $mm_conf->{LDFLAGS} = $ldflags;
+
+    return;
+}
+
+1;

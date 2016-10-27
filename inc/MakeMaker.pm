@@ -27,8 +27,12 @@ HERE
     $tmpl =
       substr( $tmpl, 0, pos($tmpl) ) . $assert_compiler . substr( $tmpl, pos($tmpl) );
 
-##    $tmpl .= "\n\n" . _MY_package_subs();
-##    warn "$tmpl\n";
+    # add our custom config
+    my $mutator = "BSONConfig::configure(\\%WriteMakefileArgs);\n\n";
+
+    unless ( $tmpl =~ s{^(WriteMakefile\(%WriteMakefileArgs\))}{$mutator$1}ms ) {
+        die "Can't fix Makefile.PL:\n $tmpl\n";
+    }
     return $tmpl;
 };
 
