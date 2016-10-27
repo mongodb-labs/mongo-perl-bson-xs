@@ -369,7 +369,7 @@ call_key_value_iter (SV *func, SV **ret ) {
   FREETMPS;
   LEAVE;
 
-  return SvOK(ret[0]);
+  return SvOK(ret[0]) != 0;
 }
 
 static SV *
@@ -1528,7 +1528,8 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
     SV *tempsv;
     SV *d = newSVnv(bson_iter_double(iter));
 
-    if (isinfnan(SvNV(d))) {
+    /* Check for Inf and NaN */
+    if (Perl_isinf(SvNV(d)) || Perl_isnan(SvNV(d)) ) {
       SvPV_nolen(d); /* force to PVNV for compatibility */
     }
 
@@ -1769,12 +1770,12 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
   }
   case BSON_TYPE_MINKEY: {
     HV *stash = gv_stashpv("BSON::MinKey", GV_ADD);
-    value = sv_bless(newRV((SV*)newHV()), stash);
+    value = sv_bless(newRV_noinc((SV*)newHV()), stash);
     break;
   }
   case BSON_TYPE_MAXKEY: {
     HV *stash = gv_stashpv("BSON::MaxKey", GV_ADD);
-    value = sv_bless(newRV((SV*)newHV()), stash);
+    value = sv_bless(newRV_noinc((SV*)newHV()), stash);
     break;
   }
   case BSON_TYPE_DECIMAL128: {
