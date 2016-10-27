@@ -1593,7 +1593,7 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
     bson_subtype_t type;
     bson_iter_binary(iter, &type, &len, (const uint8_t **)&buf);
 
-    if ( UNLIKELY(type == BSON_SUBTYPE_BINARY_DEPRECATED) ) {
+    if ( BSON_UNLIKELY(type == BSON_SUBTYPE_BINARY_DEPRECATED) ) {
       /* for the deprecated subtype, bson_iter_binary gives
        * buffer pointer just past the inner length and adjusted len */
       int32_t sublen;
