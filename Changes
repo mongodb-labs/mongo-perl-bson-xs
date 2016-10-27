@@ -2,6 +2,10 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [Fixes]
+
+    - Fix portability of XS to older Perls
+
 v0.2.0    2016-10-24 21:42:33-04:00 America/New_York
 
     - First release
