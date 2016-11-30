@@ -2,6 +2,11 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [Fixes]
+
+    - Explicitly load "re::regexp_pattern" on perl 5.10.0 as it was
+      not automatically available.
+
 v0.2.2    2016-10-27 17:55:25-04:00 America/New_York
 
     [Fixes]
