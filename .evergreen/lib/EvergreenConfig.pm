@@ -241,9 +241,14 @@ sub _yaml_snippet {
 # of functions that can be included in tasks.
 __DATA__
 "fetchSource" :
-  command: git.get_project
-  params:
-    directory: mongo-perl-bson-xs
+  - command: git.get_project
+    params:
+      directory: src
+  - command: shell.exec
+    params:
+      script: |
+        ${prepare_shell}
+        mv src ${repo_directory}
 "dynamicVars":
   - command: shell.exec
     params:
