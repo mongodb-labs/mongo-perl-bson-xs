@@ -6,6 +6,7 @@ package EvergreenHelper;
 
 use Config;
 use Cwd 'getcwd';
+use File::Find qw/find/;
 use File::Path qw/mkpath rmtree/;
 use base 'Exporter';
 
@@ -13,22 +14,36 @@ our @EXPORT = qw(
   bootstrap_env
   bootstrap_locallib
   configure
+  filter_file
+  fix_config_files_in
+  fix_shell_files_in
+  fwd_slash
   get_info
   make
+  maybe_prepend_env
+  prepend_env
   run_in_dir
   run_local_cpanm
   run_perl5_cpanm
+  slurp
+  spew
   try_system
 );
 
+#--------------------------------------------------------------------------#
 # constants
+#--------------------------------------------------------------------------#
 
 my $orig_dir = getcwd();
 my $path_sep = $Config{path_sep};
 my $perl5lib = "$orig_dir/perl5";
 my $cpanm    = "$orig_dir/cpanm";
 
-# configure local perl5 user directory
+#--------------------------------------------------------------------------#
+# functions
+#--------------------------------------------------------------------------#
+
+# bootstrap_env: bootstrap local libs and cpanm and clean up environment
 
 sub bootstrap_env {
     # bootstrap general perl local library
@@ -44,6 +59,8 @@ sub bootstrap_env {
     try_system(qw(curl -L https://cpanmin.us/ --fail --show-error --silent -o cpanm));
 }
 
+# bootstrap_locallib: configure a local perl5 user directory in a path
+
 sub bootstrap_locallib {
     my $path = shift;
 
@@ -51,14 +68,61 @@ sub bootstrap_locallib {
         mkpath "$path/$d";
     }
 
-    _maybe_prepend_env( PERL5LIB => "$path/lib/perl5" );
-    _maybe_prepend_env( PATH     => "$path/bin" );
+    maybe_prepend_env( PERL5LIB => "$path/lib/perl5" );
+    maybe_prepend_env( PATH     => "$path/bin" );
 
     require lib;
     lib->import("$path/lib/perl5");
 }
 
-sub configure { try_system($^X, "Makefile.PL") }
+# configure: run Makefile.PL
+
+sub configure { try_system( $^X, "Makefile.PL" ) }
+
+# filter_file: given a path and a coderef that modifies $_, replace the
+# file with the modified contents
+
+sub filter_file {
+    my ( $file, $code ) = @_;
+    local $_ = slurp($file);
+    $code->();
+    spew( $file, $_ );
+}
+
+# fix_config_files_in: given a directory of mongo orchestration config
+# files, modify .json files to replace certain tokens
+
+sub fix_config_files_in {
+    my $dir   = shift;
+    my $fixer = sub {
+        return unless -f && /\.json$/;
+        filter_file( $_, sub { s/ABSOLUTE_PATH_REPLACEMENT_TOKEN/$dir/g } );
+    };
+    find( $fixer, $dir );
+}
+
+# fix_shell_files_in: given a directory with .sh files, clean them up
+# by removing CRs and fixing permissions
+
+sub fix_shell_files_in {
+    my $dir   = shift;
+    my $fixer = sub {
+        return unless -f && /\.sh$/;
+        filter_file( $_, sub { s/\r//g } );
+        chmod 0755, $_ or die chmod "$_: $!";
+    };
+    find( $fixer, $dir );
+}
+
+# fwd_slash: change a path to have forward slashes
+
+sub fwd_slash {
+    my $path = shift;
+    $path =~ tr[\\][/];
+    return $path;
+}
+
+# get_info: print PATH and perl-V info
 
 sub get_info {
     print "PATH = $ENV{PATH}\n";
@@ -66,7 +130,33 @@ sub get_info {
     try_system(qw(perl -V));
 }
 
+# make: run 'make' or 'dmake' or whatever
+
 sub make { try_system( $Config{make}, @_ ) }
+
+# maybe_prepend_env: prepends a value to an ENV var if it doesn't exist.
+# This is currently hardcoded for PATH separators.
+
+sub maybe_prepend_env {
+    my ( $key, $value ) = @_;
+    my $orig = $ENV{$key};
+    return
+      if defined $orig
+      && ( $orig =~ m{ (?: ^ | $path_sep ) $value (?: $ | $path_sep ) }x );
+    my @orig = defined $ENV{$key} ? ( $ENV{$key} ) : ();
+    $ENV{$key} = join( $path_sep, $value, @orig );
+}
+
+# prepend_env: unconditionally prepend a value to an ENV var
+
+sub prepend_env {
+    my ( $key, @list ) = @_;
+    my @orig = defined $ENV{$key} ? ( $ENV{$key} ) : ();
+    return join( $path_sep, @list, @orig );
+}
+
+# run_in_dir: given a directory and code ref, temporarily change to that
+# directory for the duration of the code
 
 sub run_in_dir {
     my ( $dir, $code ) = @_;
@@ -75,6 +165,8 @@ sub run_in_dir {
     chdir $dir or die "chdir $dir: $!\n";
     $code->();
 }
+
+# run_local_cpanm: run cpanm and install to a 'local' perl5lib
 
 sub run_local_cpanm {
     my @args     = @_;
@@ -85,6 +177,8 @@ sub run_local_cpanm {
         $locallib, @args );
 }
 
+# run_perl5_cpanm: run cpanm and install to 'main' perl5lib
+
 sub run_perl5_cpanm {
     my @args = @_;
     try_system( $^X, '--', $cpanm,
@@ -92,27 +186,33 @@ sub run_perl5_cpanm {
         $perl5lib, @args );
 }
 
+# slurp: full file read
+
+sub slurp {
+    my ($file) = @_;
+    open my $fh, "<:raw", $file or die "$file: $!";
+    return scalar do { local $/; <$fh> };
+}
+
+# spew: full file write; NOT ATOMIC
+
+sub spew {
+    my ( $file, @data ) = @_;
+    open my $fh, ">:raw", $file or die "$file: $!";
+    print {$fh} $_ for @data;
+    close $fh or die "closing $file: $!";
+    return 1;
+}
+
+# try_system: print and run a command and die if exit code is non-zero
+
 sub try_system {
     my @command = @_;
     print "\nRunning: @command\n\n";
     system(@command) and die "Aborting: '@command' failed";
 }
 
-sub _maybe_prepend_env {
-    my ( $key, $value ) = @_;
-    my $orig = $ENV{$key};
-    return
-      if defined $orig
-      && ( $orig =~ m{ (?: ^ | $path_sep ) $value (?: $ | $path_sep ) }x );
-    my @orig = defined $ENV{$key} ? ( $ENV{$key} ) : ();
-    $ENV{$key} = join( $path_sep, $value, @orig );
-}
-
-sub _prepend_env {
-    my ( $key, @list ) = @_;
-    my @orig = defined $ENV{$key} ? ( $ENV{$key} ) : ();
-    return join( $path_sep, @list, @orig );
-}
+# Local::TinyGuard -- an object that runs a closure on destruction
 
 package Local::TinyGuard;
 

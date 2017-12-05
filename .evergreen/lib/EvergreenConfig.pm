@@ -2,18 +2,40 @@ use 5.008001;
 use strict;
 use warnings;
 
+=head1 NAME
+
+EvergreenConfig
+
+=head1 DESCRIPTION
+
+This module provides helpers for generating 'config.yml' files for
+testing MongoDB Perl projects with the Evergreen CI tool.
+
+Read the comments in the file for documentation.
+
+=cut
+
 package EvergreenConfig;
+
+# This config system assumes the following variables are set at the project
+# level in Evergreen:
+#
+# - aws_artifact_prefix -- S3 path for per-commit/patch build artifacts
+# - aws_toolchain_prefix -- S3 path prefix for common dependencies
+# - aws_key -- S3 credential
+# - aws_secret -- S3 credential
+# - repo_directory -- name for cloned main repo
 
 use base 'Exporter';
 
-# CPAN::Meta::YAML is a clone of YAML::Tiny and is available in Perl 5.14+
-use CPAN::Meta::YAML;
-use List::Util 1.45 qw/any uniq/;
+use YAML ();
+use List::Util 1.45 qw/uniq/;
 use Tie::IxHash;
 
 our @EXPORT = qw(
   assemble_yaml
   buildvariants
+  clone
   ignore
   pre
   post
@@ -21,19 +43,55 @@ our @EXPORT = qw(
   timeout
 );
 
+#--------------------------------------------------------------------------#
 # Constants
+#--------------------------------------------------------------------------#
 
+my $WEEK_IN_SECS = 7 * 24 * 3600;
+
+{ no warnings 'once'; $YAML::SortKeys = 0; }
+
+# For Unix, we test 5.10.1 to 5.24.0, as this is the full range we support.
+# We test default config, plus threaded ("t") and long-double ("ld")
+# configs.
 my @unix_perls =
   map { $_, "${_}t", "${_}ld" } qw/10.1 12.5 14.4 16.3 18.4 20.3 22.2 24.0/;
+
+# For Windows, we test from 5.14.4 to 5.24.0, as these are available in
+# "portable" format.  There are no configuration suffixes; we just use
+# the standard Strawberry Perl builds (which happen to be threaded).
 my @win_perls = qw/ 14.4 16.3 18.4 20.3 22.2 24.0/;
 
+# MongoDB's Windows Evergreen hosts have a different naming scheme than
+# Unix hosts.  We don't care about the compiler type (as we use the MinGW
+# bundled with Strawberry Perl), so we want to run on as many host-types as
+# possible.
 my @win_dists = (
-##    ( map { ; "windows-64-$_-compile", "windows-64-$_-test" } qw/vs2010 vs2013/ ),
+    ( map { ; "windows-64-$_-compile", "windows-64-$_-test" } qw/vs2010 vs2013/ ),
     ( map { ; "windows-64-vs2015-$_" } qw/compile test large/ )
 );
 
+# For Z series, ARM64 and Power8 (aka ZAP), only more recent perls compile
+# cleanly, so we test a smaller range of Perls.
+my @zap_perls = map { $_, "${_}t", "${_}ld" } qw/14.4 16.3 18.4 20.3 22.2 24.0/;
+
+# The %os_map variable provides details of the full range of MongoDB
+# Evergreen operating systems we might run on, plus configuration details
+# build and run on each.
+#
+# Sub-keys include:
+# name: Visible display name in Evergreen web pages
+
+# run_on: the MongoDB Evergreen host names; generally as many as possible
+# as our size need is minimal, but we'd like to minimize the latency of
+# getting tasks running.
+#
 # perlroot: where perls are installed. E.g. /opt/perl or c:/perl
-# binpath: dir under perlroot/$version to find perl binary. E.g. 'bin' or 'perl/bin'
+#
+# perlpath: dir under perlroot/$version to find perl binary. E.g. 'bin' or 'perl/bin'
+#
+# perls: a list of perl "versions" (really version plus an optional
+# configuration suffix) to use on that OS.
 my %os_map = (
     ubuntu1604 => {
         name     => "Ubuntu 16.04",
@@ -42,7 +100,14 @@ my %os_map = (
         perlpath => 'bin',
         perls    => \@unix_perls,
     },
-    'windows64' => {
+    rhel62 => {
+        name     => "RHEL 6.2",
+        run_on   => [ 'rhel62-test', 'rhel62-build', 'rhel62-large' ],
+        perlroot => '/opt/perl',
+        perlpath => 'bin',
+        perls    => \@unix_perls,
+    },
+    windows64 => {
         name     => "Win64",
         run_on   => \@win_dists,
         perlroot => '/cygdrive/c/perl',
@@ -50,9 +115,40 @@ my %os_map = (
         ccpath   => 'c/bin',
         perls    => \@win_perls,
     },
+    suse12_z => {
+        name     => "SUSE 12 Z Series",
+        run_on   => [ 'suse12-zseries-build', 'suse12-zseries-test' ],
+        perlroot => '/opt/perl',
+        perlpath => 'bin',
+        perls    => \@zap_perls,
+        stepback => 'false',
+        batchtime => $WEEK_IN_SECS,
+    },
+    ubuntu1604_arm64 => {
+        name     => "Ubuntu 16.04 ARM64",
+        run_on   => [ 'ubuntu1604-arm64-large', 'ubuntu1604-arm64-small' ],
+        perlroot => '/opt/perl',
+        perlpath => 'bin',
+        perls    => \@zap_perls,
+        stepback => 'false',
+        batchtime => $WEEK_IN_SECS,
+    },
+    ubuntu1604_power8 => {
+        name     => "Ubuntu 16.04 Power8",
+        run_on   => [ 'ubuntu1604-power8-build', 'ubuntu1604-power8-test' ],
+        perlroot => '/opt/perl',
+        perlpath => 'bin',
+        perls    => \@zap_perls,
+        stepback => 'false',
+        batchtime => $WEEK_IN_SECS,
+    },
 );
 
-# Load functions from DATA
+# The %functions variable contains YAML snippets of reusable functions.
+#
+# The DATA section contains a text file of Evergreen 'function' recipes in
+# YAML format.  The DATA section is parsed into individual function
+# snippets that can be included on demand in a config.yml
 my %functions;
 {
     my $current_name;
@@ -69,24 +165,68 @@ my %functions;
     $functions{$current_name} = $current_body if $current_name;
 }
 
+#--------------------------------------------------------------------------#
 # Functions
+#--------------------------------------------------------------------------#
+
+# assemble_yaml: Given a list of either strings or hash references, concatenate them
+# into a single string, converting hash references to YAML.  Effectively,
+# this allow assembling a YAML file in pieces, controlling the order of
+# sections.
 
 sub assemble_yaml {
     return join "\n", map { _yaml_snippet($_) } _default_headers(), @_;
 }
 
+# buildvariants: Given an array reference of 'task' hash refs, return a
+# list of hash references representing sections of a config.yml.
+#
+# Task hash refs allow the following keys:
+#
+# - name: the name of the task, note that optional 'pre' and 'post' names
+# are handled special.  Only one of 'pre' or 'post' can appear. The 'pre'
+# task is broken up and manually appended into other tasks (this works
+# around a problem where an Evergreen 'pre' task failure doesn't halt a
+# task. The 'post' task is provided to Evergreen as a 'post' task there.
+#
+# - commands: an arrayref of function that make up the task.  Functions
+# must either be strings or an array ref with the first value being the
+# function name and the second value being a hash-ref of key/value
+# arguments to pass to the function.
+#
+# - depends_on: a list of task names a given task depends upon.
+#
+# - filter: a hash reference used to determine which tasks are included in
+# which variant
+#
+# - stepback: a boolean, indicating if failures of the task should trigger
+# a stepback through commit history to find the failing commit
+#
+# If a task reference a function not listed in the DATA section, the
+# subroutine throws an error.
+#
+# The hash ref sections returned are the function definitions needed, the
+# task definitions, and the build_variant definition.
+
 sub buildvariants {
-    my ($tasks) = @_;
+    my ($tasks, $variant_filter_fcn) = @_;
+
+    # Later, we'll capture function names so we know what snippets to
+    # include in the final YAML.
     my (@functions_found);
 
-    # Pull out task names for later verification of dependencies
+    # Pull out task names for later verification of dependencies.
     my @task_names = grep { $_ ne 'pre' && $_ ne 'post' } map { $_->{name} } @$tasks;
     my %has_task = map { $_ => 1 } @task_names;
+
+    # Index the filters by task name for later use.
+    my %filters;
 
     # verify the tasks are valid
     for my $t (@$tasks) {
         my @cmds = @{ $t->{commands}   || [] };
         my @deps = @{ $t->{depends_on} || [] };
+        $filters{ $t->{name} } = delete $t->{filter};
 
         my @fcns = map { $_->{func} } @cmds;
         push @functions_found, @fcns;
@@ -98,34 +238,51 @@ sub buildvariants {
         die "Unknown dependent task(s): @bad_deps\n" if @bad_deps;
     }
 
-    # assemble the list of functions
     return (
         _assemble_functions(@functions_found),
-        _assemble_tasks($tasks), _assemble_variants(@task_names),
+        _assemble_tasks($tasks), _assemble_variants( \@task_names, \%filters, $variant_filter_fcn ),
     );
 }
 
+# clone: make a deep copy to avoid references
+
+sub clone { return YAML::Load( YAML::Dump(shift) ) }
+
+# ignore: constructs an 'ignore' section for config.yml
+
 sub ignore { return { ignore => [@_] } }
+
+# post: constructs a "post" task hash ref from a list of functions
 
 sub post {
     return { name => 'post', commands => _func_hash_list(@_) };
 }
 
+# pre: constructs a "pre" task hash ref from a list of functions
+
 sub pre {
     return { name => 'pre', commands => _func_hash_list(@_) };
 }
+
+# task: constructs a task data structure from a name and arrayref of
+# commands.  It takes an optional set of arguments.  See buildvariants
+# comments for details on task structure.
 
 sub task {
     my ( $name, $commands, %opts ) = @_;
     die "No commands for $name" unless $commands;
     my $task = _hashify( name => $name, commands => _func_hash_list(@$commands) );
-    my $deps = $opts{depends_on};
-    if ( defined $deps ) {
+    if ( defined( my $deps = $opts{depends_on} ) ) {
         $task->{depends_on} =
           ref $deps eq 'ARRAY' ? _name_hash_list(@$deps) : _name_hash_list($deps);
     }
+    $task->{filter} = $opts{filter};
+    $task->{stepback} = $opts{stepback} if $opts{stepback};
     return $task;
 }
+
+# timeout: constructs a timeout section for evergreen. It has a somewhat
+# pointless command it runs rather than anything more thoughtful/useful.
 
 sub timeout {
     my $timeout = shift;
@@ -143,9 +300,18 @@ sub timeout {
 
 # Private functions
 
+# _assemble_functions: takes a list of function names and constructs a YAML
+# block of just those functions by stitching together snippets parsed from
+# DATA
+
 sub _assemble_functions {
     return join "\n", "functions:", map { $functions{$_} } uniq sort @_;
 }
+
+# _assemble_tasks: takes an array ref of task/pre/post structures and
+# returns a list of hashrefs wrapped in the correct keys for constructing
+# an evergreen config file.  'pre' tasks are copied into each task and then
+# omitted as a separate block.
 
 sub _assemble_tasks {
     my $tasks = shift;
@@ -161,20 +327,30 @@ sub _assemble_tasks {
             push @parts, $t;
         }
     }
-    return (
-        ( $pre  ? ( { pre  => $pre } )  : () ),
-        ( $post ? ( { post => $post } ) : () ),
-        { tasks => [@parts] }
-    );
+
+    # 'pre' failures are ignored, so we'll stitch those commands into
+    # all tasks directly instead of using Evergreen's 'pre' feature.
+    for my $t (@parts) {
+        unshift @{ $t->{commands} }, map { _hashify_sorted(%$_) } @{ clone($pre) };
+    }
+
+    return ( ( $post ? ( { post => $post } ) : () ), { tasks => [@parts] } );
 }
 
+# _assemble_variants: produces a list of build variants with a denormalized
+# list of tasks for each variant and other variables a variant requires,
+# like variant-specific expansions
+
 sub _assemble_variants {
-    my (@task_names) = @_;
+    my ( $task_names, $filters, $variant_filter_fcn ) = @_;
 
     my @variants;
     for my $os ( sort keys %os_map ) {
         my $os_map = $os_map{$os};
         for my $ver ( @{ $os_map{$os}{perls} } ) {
+
+            next if $variant_filter_fcn && ! $variant_filter_fcn->($os, $ver);
+
             # OS specific path to a perl version's PREFIX
             my $prefix_path = "$os_map{$os}{perlroot}/$ver";
 
@@ -185,40 +361,100 @@ sub _assemble_variants {
             # Explicit path to perl to avoid confusion
             my $perlpath = "$prefix_path/$os_map{$os}{perlpath}/perl";
 
+            # Filter out some tasks based on OS and Perl version
+            my @filtered = _filter_tasks( $os, $ver, $task_names, $filters );
+
+            # Skip variant if no tasks
+            next unless @filtered;
+
             push @variants,
               _hashify(
                 name         => "os_${os}_perl_${ver}",
                 display_name => "$os_map{$os}{name} Perl $ver",
-                expansions   => {
+                expansions   => _hashify_sorted(
                     os       => $os,
                     perlver  => $ver,
                     perlpath => $perlpath,
                     addpaths => join( ":", map { "$prefix_path/$_" } @extra_paths ),
-                },
+                ),
                 run_on => [ @{ $os_map{$os}{run_on} } ],
-                tasks  => [@task_names],
+                tasks  => [@filtered],
+                ( $os_map{$os}{stepback} ? ( stepback => $os_map{$os}{stepback} ) : () ),
+                ( $os_map{$os}{batchtime} ? ( batchtime => $os_map{$os}{batchtime} ) : () ),
               );
         }
     }
     return { buildvariants => \@variants };
 }
 
+# _default_headers: returns a list of hash refs that should be assembled
+# at the top of every config file
+
 sub _default_headers {
     return { stepback => 'true' }, { command_type => 'system' };
 }
 
-sub _func_hash_list {
-    return [ map { { func => $_ } } @_ ];
+# _filter_tasks: given OS and Perl version, a list of task names, and a
+# hashref of filter parameters per task, returns the list of task names where
+# the filters match OS and perl version.  Effectively the filter says "only
+# include me if a variant OS and Perl match what I say I'm eligible for".
+
+sub _filter_tasks {
+    my ( $os, $ver, $task_names, $filters ) = @_;
+    my @filtered;
+    for my $t (@$task_names) {
+        my $f = $filters->{$t} || {};
+        my $os_ok  = $f->{os}   ? ( grep { $os eq $_ } @{ $f->{os} } )       : 1;
+        my $ver_ok = $f->{perl} ? ( grep { $ver =~ /^$_/ } @{ $f->{perl} } ) : 1;
+        push @filtered, $t
+          if $os_ok && $ver_ok;
+    }
+    return @filtered;
 }
+
+# _func_hash_list: given a list of function names or name-variable array refs,
+# nest them in a hashref with the key 'func' while also sorting variables.
+
+sub _func_hash_list {
+    my @list;
+    for my $f (@_) {
+        if ( ref $f eq 'ARRAY' ) {
+            push @list,
+              _hashify_sorted( func => $f->[0], vars => _hashify_sorted( %{ $f->[1] } ) );
+        }
+        else {
+            push @list, { func => $f };
+        }
+    }
+    return \@list;
+}
+
+# _hashify: syntactic sugar for constructing order-preserving hashrefs
 
 sub _hashify {
     tie my %hash, "Tie::IxHash", @_;
     return \%hash;
 }
 
+# _hashify_sorted: like _hashify, but recursively orders hashref keys
+
+sub _hashify_sorted {
+    my %h = @_;
+    tie my %hash, "Tie::IxHash";
+    for my $k ( sort keys %h ) {
+        $hash{$k} = ref( $h{$k} ) eq 'HASH' ? _hashify_sorted( %{ $h{$k} } ) : $h{$k};
+    }
+    return \%hash;
+}
+
+# _name_hash_list: maps names to hashrefs with a 'name' key
+
 sub _name_hash_list {
     return [ map { { name => $_ } } @_ ];
 }
+
+# _yaml_snippet: maps hashrefs to YAML string snippets that can be
+# concatenated but passes through strings unchanged
 
 sub _yaml_snippet {
     my $data = shift;
@@ -226,12 +462,12 @@ sub _yaml_snippet {
     # Passthrough literal text
     return $data unless ref $data;
 
-    # Convert refs to YAML strings; upgrade 'true' or "true" to true, etc.
-    my $yaml = CPAN::Meta::YAML->new($data);
-    my $text = eval { $yaml->write_string };
+    my $text = eval { YAML::Dump($data) } || '';
+    warn $@ if $@;
+
+    # Remove YAML document divider
     $text =~ s/[^\n]*\n//m;
-    $text =~ s/((["'])true\2)/true/msg;
-    $text =~ s/((["'])false\2)/false/msg;
+
     return $text;
 }
 
@@ -240,15 +476,6 @@ sub _yaml_snippet {
 # Evergreen functions in YAML format. This is a cross-project pool
 # of functions that can be included in tasks.
 __DATA__
-"fetchSource" :
-  - command: git.get_project
-    params:
-      directory: src
-  - command: shell.exec
-    params:
-      script: |
-        ${prepare_shell}
-        mv src ${repo_directory}
 "dynamicVars":
   - command: shell.exec
     params:
@@ -267,12 +494,97 @@ __DATA__
   - command: expansions.update
     params:
       file: expansion.yml
+"whichPerl":
+  command: shell.exec
+  params:
+    script: |
+      ${prepare_shell}
+      $PERL -v
+"fetchSource" :
+  - command: git.get_project
+    params:
+      directory: src
+  - command: shell.exec
+    params:
+      script: |
+        ${prepare_shell}
+        mv src ${repo_directory}
+"fetchOtherRepos":
+  command: shell.exec
+  params:
+    script: |
+      ${prepare_shell}
+      git clone https://github.com/mongodb/mongo-perl-bson
+      git clone https://github.com/mongodb/mongo-perl-bson-xs
+"buildPerl5Lib":
+  command: shell.exec
+  type: test
+  params:
+    script: |
+      ${prepare_shell}
+      TARGET="${target}" $PERL ${repo_directory}/.evergreen/dependencies/build-perl5lib.pl
+      ls -l perl5lib.tar.gz
+"testPerl5Lib" :
+  command: shell.exec
+  type: test
+  params:
+    script: |
+      ${prepare_shell}
+      $PERL mongo-perl-driver/.evergreen/dependencies/test-perl5lib.pl
+"buildModule" :
+  command: shell.exec
+  type: test
+  params:
+    script: |
+      ${prepare_shell}
+      $PERL ${repo_directory}/.evergreen/testing/build.pl
+"testDriver" :
+  command: shell.exec
+  type: test
+  params:
+    script: |
+      ${prepare_shell}
+      export MONGOD=$(echo "${MONGODB_URI}" | tr -d '[:space:]')
+      SSL=${ssl} $PERL ${repo_directory}/.evergreen/testing/test.pl
+"testModule" :
+  command: shell.exec
+  type: test
+  params:
+    script: |
+      ${prepare_shell}
+      $PERL ${repo_directory}/.evergreen/testing/test.pl
+"setupOrchestration" :
+  - command: shell.exec
+    params:
+      script: |
+        ${prepare_shell}
+        VERSION=${version} TOPOLOGY=${topology} AUTH=${auth} SSL=${ssl} $PERL ${repo_directory}/.evergreen/testing/setup-mongo-orchestration.pl
+  - command: expansions.update
+    params:
+      file: mo-expansion.yml
+"teardownOrchestration" :
+  command: shell.exec
+  continue_on_error: true
+  params:
+    script: |
+      ${prepare_shell}
+      $PERL ${repo_directory}/.evergreen/testing/teardown-mongo-orchestration.pl
+"uploadPerl5Lib":
+  command: s3.put
+  params:
+    aws_key: ${aws_key}
+    aws_secret: ${aws_secret}
+    local_file: perl5lib.tar.gz
+    remote_file: ${aws_toolchain_prefix}/${os}/${perlver}/${target}/perl5lib.tar.gz
+    bucket: mciuploads
+    permissions: public-read
+    content_type: application/x-gzip
 "downloadPerl5Lib" :
   command: shell.exec
   params:
     script: |
       ${prepare_shell}
-      curl https://s3.amazonaws.com/mciuploads/${aws_toolchain_prefix}/${os}/${perlver}/perl5lib.tar.gz -o perl5lib.tar.gz --fail --show-error --silent --max-time 240
+      curl https://s3.amazonaws.com/mciuploads/${aws_toolchain_prefix}/${os}/${perlver}/${target}/perl5lib.tar.gz -o perl5lib.tar.gz --fail --show-error --silent --max-time 240
       tar -zxf perl5lib.tar.gz
 "uploadBuildArtifacts":
   - command: s3.put
@@ -292,31 +604,34 @@ __DATA__
       cd ${repo_directory}
       curl https://s3.amazonaws.com/mciuploads/${aws_artifact_prefix}/${repo_directory}/${build_id}/build.tar.gz -o build.tar.gz --fail --show-error --silent --max-time 240
       tar -zxmf build.tar.gz
-"whichPerl":
-  command: shell.exec
-  type: test
-  params:
-    script: |
-      ${prepare_shell}
-      $PERL -v
-"buildModule" :
-  command: shell.exec
-  type: test
-  params:
-    script: |
-      ${prepare_shell}
-      $PERL ${repo_directory}/.evergreen/testing/build.pl
-"testModule" :
-  command: shell.exec
-  type: test
-  params:
-    script: |
-      ${prepare_shell}
-      $PERL ${repo_directory}/.evergreen/testing/test.pl
 "cleanUp":
   command: shell.exec
   params:
     script: |
       ${prepare_shell}
+      rm -rf ~/.cpanm
       rm -rf perl5
       rm -rf ${repo_directory}
+"cleanUpOtherRepos":
+  command: shell.exec
+  params:
+    script: |
+      ${prepare_shell}
+      rm -rf mongo-perl-bson
+      rm -rf mongo-perl-bson-xs
+"setupAtlasProxy":
+  command: shell.exec
+  params:
+    script: |
+      ${prepare_shell}
+      $PERL ${repo_directory}/.evergreen/testing/setup-atlas-proxy.pl
+"testAtlasProxy":
+  command: shell.exec
+  type: test
+  params:
+    script: |
+      ${prepare_shell}
+      export ATLAS_PROXY=1
+      export SSL=ssl
+      export MONGOD="mongodb://user:pencil@host5.local.10gen.cc:9900/admin?replicaSet=benchmark"
+      $PERL ${repo_directory}/.evergreen/testing/test.pl
