@@ -13,7 +13,8 @@ use EvergreenConfig;
 # Limit tasks to certain operating systems
 my $OS_FILTER =
   { os =>
-      [ 'rhel62', 'windows64', 'suse12_z', 'ubuntu1604_arm64', 'ubuntu1604_power8' ] };
+      [ 'rhel62', 'windows64', 'suse12_z', 'ubuntu1604_power8' ] };
+##      [ 'rhel62', 'windows64', 'suse12_z', 'ubuntu1604_arm64', 'ubuntu1604_power8' ] };
 
 sub main {
     my $download = [ 'downloadPerl5Lib' => { target => '${repo_directory}' } ];
@@ -34,10 +35,11 @@ sub main {
 
     # Build filter to avoid "ld" Perls on Z-series
     my $variant_filter = sub {
-        my ( $os, $ver ) = @_;
+        my ($os, $ver) = @_;
         return 0 if $os eq 'suse12_z' && $ver =~ m/ld$/;
         return 1;
     };
+
 
     print assemble_yaml( timeout(600), buildvariants( \@tasks, $variant_filter ), );
 
