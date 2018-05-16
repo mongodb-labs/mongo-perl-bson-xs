@@ -1094,7 +1094,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
       append_fit_int(bson, key, sv);
     } else if ( prefer_numeric && is_number )  {
       /* copy to avoid modifying flags of the original */
-      tempsv = sv_2mortal(newSVsv(tempsv));
+      tempsv = sv_2mortal(newSVsv(sv));
       if (is_number & IS_NUMBER_NOT_INT) { /* double */
         bson_append_double(bson, key, -1, (double)SvNV(tempsv));
       } else {
