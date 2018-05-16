@@ -7,3 +7,6 @@ The t/pvtlib/CleanEnv.pm module in the *BSON* distribution blocks BSON::XS.
 The t/pvtlib/CleanEnv.pm module in *this* distribution blocks BSON::PP.  This
 way, we can use the same set of tests for both distributions, ensuring
 backend compatibility.
+
+See the devel/sync-bson-tests.pl file to automatically update files from
+the BSON distribution.
