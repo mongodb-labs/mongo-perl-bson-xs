@@ -1,4 +1,4 @@
-use 5.010001;
+use 5.008001;
 use strict;
 use warnings;
 use utf8;
@@ -10,6 +10,7 @@ binmode( Test::More->builder->$_, ":utf8" )
   for qw/output failure_output todo_output/;
 
 use lib 't/lib';
+use lib 't/pvtlib';
 use CleanEnv;
 use TestUtils;
 

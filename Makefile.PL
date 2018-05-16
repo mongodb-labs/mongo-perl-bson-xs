@@ -58,7 +58,7 @@ my %WriteMakefileArgs = (
         "FILES" =>
           "xs/XS\$(OBJ_EXT) bson/bson-atomic\$(OBJ_EXT) bson/bson-clock\$(OBJ_EXT) bson/bson-context\$(OBJ_EXT) bson/bson-decimal128\$(OBJ_EXT) bson/bson-error\$(OBJ_EXT) bson/bson-iso8601\$(OBJ_EXT) bson/bson-iter\$(OBJ_EXT) bson/bson-keys\$(OBJ_EXT) bson/bson-md5\$(OBJ_EXT) bson/bson-memory\$(OBJ_EXT) bson/bson-oid\$(OBJ_EXT) bson/bson-reader\$(OBJ_EXT) bson/bson-string\$(OBJ_EXT) bson/bson-timegm\$(OBJ_EXT) bson/bson-utf8\$(OBJ_EXT) bson/bson-value\$(OBJ_EXT) bson/bson-version\$(OBJ_EXT) bson/bson-writer\$(OBJ_EXT) bson/bson\$(OBJ_EXT)"
     },
-    "test" => { "TESTS" => "t/*.t t/corpus/*.t t/mapping/*.t" }
+    "test" => { "TESTS" => "t/*.t t/common/*.t t/corpus/*.t t/mapping/*.t" }
 );
 
 my %FallbackPrereqs = (

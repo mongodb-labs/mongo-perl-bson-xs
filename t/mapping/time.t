@@ -1,4 +1,4 @@
-use 5.010001;
+use 5.008001;
 use strict;
 use warnings;
 use utf8;
@@ -9,6 +9,7 @@ binmode( Test::More->builder->$_, ":utf8" )
   for qw/output failure_output todo_output/;
 
 use lib 't/lib';
+use lib 't/pvtlib';
 use CleanEnv;
 use TestUtils;
 
@@ -108,11 +109,11 @@ SKIP: {
 
 # to JSON
 is( to_myjson({a=>bson_time(0)}), q[{"a":"1970-01-01T00:00:00Z"}], 'json: bson_time(0)' );
-is( to_myjson({a=>bson_time(1356351330.5)}), q[{"a":"2012-12-24T12:15:30.500Z"}], 'json: bson_time(1356351330.5)' );
+is( to_myjson({a=>BSON::Time->new(value => "1356351330500")}), q[{"a":"2012-12-24T12:15:30.500Z"}], 'json: bson_time(1356351330.5)' );
 
 # to extended JSON
 is( to_extjson({a=>bson_time(0)}), q[{"a":{"$date":{"$numberLong":"0"}}}], 'extjson: bson_time(0)' );
-is( to_extjson({a=>bson_time(1356351330.5)}), q[{"a":{"$date":{"$numberLong":"1356351330500"}}}], 'extjson: bson_time(1356351330.5)' );
+is( to_extjson({a=>BSON::Time->new(value => "1356351330500")}), q[{"a":{"$date":{"$numberLong":"1356351330500"}}}], 'extjson: bson_time(1356351330.5)' );
 
 done_testing;
 

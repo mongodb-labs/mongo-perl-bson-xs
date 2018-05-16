@@ -1,4 +1,4 @@
-use 5.010001;
+use 5.008001;
 use strict;
 use warnings;
 
@@ -6,6 +6,7 @@ use Test::More 0.96;
 use Path::Tiny;
 
 use lib 't/lib';
+use lib 't/pvtlib';
 use CleanEnv;
 use CorpusTest;
 

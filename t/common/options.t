@@ -1,4 +1,4 @@
-use 5.010001;
+use 5.008001;
 use strict;
 use warnings;
 use utf8;
@@ -9,6 +9,7 @@ binmode( Test::More->builder->$_, ":utf8" )
   for qw/output failure_output todo_output/;
 
 use lib 't/lib';
+use lib 't/pvtlib';
 use CleanEnv;
 use TestUtils;
 
@@ -23,6 +24,7 @@ subtest "error_callback" => sub {
     my $obj = _BSON( error_callback => sub { push @errs, [@_] } );
     $obj->decode_one($bad);
     is( 0+ @errs, 1, "error_callback ran" );
+    # 'error reading' is from BSON::XS
     like( $errs[0][0], qr/error reading|not null terminated/i, "error_callback arg 0" );
     is( ${ $errs[0][1] }, $bad,         "error_callback arg 1" );
     is( $errs[0][2],      'decode_one', "error_callback arg 2" );
