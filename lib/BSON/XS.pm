@@ -29,10 +29,6 @@ use boolean;
 our $_boolean_true  = true;
 our $_boolean_false = false;
 
-# regexp_pattern was unavailable before 5.10, had to be exported to load the
-# function implementation on 5.10, and was automatically available in 5.10.1
-use if ( $] eq '5.010000' ), 're', 'regexp_pattern';
-
 use XSLoader;
 XSLoader::load( "BSON::XS", $VERSION );
 
