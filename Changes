@@ -2,10 +2,15 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [!!! Incompatible Changes !!!]
+
+    - PERL-742 Requires Perl 5.10.1 or later
+
     [Fixes]
 
-    - Explicitly load "re::regexp_pattern" on perl 5.10.0 as it was
-      not automatically available.
+    - PERL-894 Fix bug coercing strings to number
+
+    - PERL-894 apply prefer_numeric only to pure strings
 
 v0.2.2    2016-10-27 17:55:25-04:00 America/New_York
 
