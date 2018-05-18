@@ -623,6 +623,8 @@ iter_src_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc)
   }
 
   while ( call_key_value_iter( iter, kv ) ) {
+    sv_2mortal(kv[0]);
+    sv_2mortal(kv[1]);
     STRLEN len;
     const char *str;
 
@@ -1398,7 +1400,7 @@ bson_doc_to_hashref(bson_iter_t * iter, HV *opts) {
       && (wrap = _hv_fetchs_sv(opts, "wrap_dbrefs")) && SvTRUE(wrap)
   ) {
     SV *class = sv_2mortal(newSVpvs("BSON::DBRef"));
-    SV *dbref = call_method_va(class, "new", 1, ret );
+    SV *dbref = call_method_va(class, "new", 1, sv_2mortal(ret) );
     return dbref;
   }
 
@@ -1712,7 +1714,7 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
         croak("error iterating BSON type %d\n", bson_iter_type(iter));
     }
 
-    scope_sv = bson_doc_to_hashref(&child, opts);
+    scope_sv = sv_2mortal(bson_doc_to_hashref(&child, opts));
     value = new_object_from_pairs("BSON::Code", "code", code_sv, "scope", scope_sv, NULL);
 
     break;
