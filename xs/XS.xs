@@ -1480,6 +1480,7 @@ bson_doc_to_tiedhash(bson_iter_t * iter, HV *opts) {
 
     /* get key and value and store into hash */
     key = sv_2mortal( newSVpvn(name, strlen(name)) );
+    SvUTF8_on(key);
     value = bson_elem_to_sv(iter, name, opts);
     call_method_va(ixhash, "STORE", 2, key, value);
   }

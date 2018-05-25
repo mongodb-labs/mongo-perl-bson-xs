@@ -2,6 +2,10 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [Bug fixes]
+
+    - PERL-910 Fix bug with ordered hashes and unicode keys
+
 v0.4.0    2018-05-17 16:35:23-04:00 America/New_York
 
     [!!! Incompatible Changes !!!]
