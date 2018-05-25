@@ -4,6 +4,10 @@ Revision history for BSON-XS
 
     [Bug fixes]
 
+    - PERL-898 Fix memory leaks decoding CODEWSCOPE and DBRefs
+
+    - PERL-902 Implement type wrapper ISA optimization
+
     - PERL-910 Fix bug with ordered hashes and unicode keys
 
 v0.4.0    2018-05-17 16:35:23-04:00 America/New_York
