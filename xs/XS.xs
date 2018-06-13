@@ -348,6 +348,7 @@ static bool
 call_key_value_iter (SV *func, SV **ret ) {
   dSP;
   I32 count;
+  bool ok;
 
   ENTER;
   SAVETMPS;
@@ -356,19 +357,23 @@ call_key_value_iter (SV *func, SV **ret ) {
 
   count = call_sv(func, G_ARRAY);
 
-  if ( count == 0 ) {
-    return false;
-  }
-
   SPAGAIN;
-  SvREFCNT_inc (ret[1] = POPs);
-  SvREFCNT_inc (ret[0] = POPs);
+
+  if ( count == 0 ) {
+    ok = false;
+  }
+  else {
+    SvREFCNT_inc (ret[1] = POPs);
+    SvREFCNT_inc (ret[0] = POPs);
+
+    ok = SvOK(ret[0]) != 0;
+  }
 
   PUTBACK;
   FREETMPS;
   LEAVE;
 
-  return SvOK(ret[0]) != 0;
+  return ok;
 }
 
 static SV *
