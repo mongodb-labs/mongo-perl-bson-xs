@@ -445,7 +445,7 @@ perl_mongo_sv_to_bson (bson_t * bson, SV *sv, HV *opts) {
       const char *bson_str;
       bson_t *child;
 
-      encoded = call_perl_reader(sv, "bson");
+      encoded = sv_2mortal(call_perl_reader(sv, "bson"));
       bson_str = SvPV(encoded, str_len);
       child = bson_new_from_data((uint8_t*) bson_str, str_len);
       bson_concat(bson, child);
@@ -542,7 +542,9 @@ hv_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
   }
 
   /* free the hv elem */
-  Safefree(stack);
+  if ( ! subdoc ) {
+    Safefree(stack);
+  }
 }
 
 static void
@@ -596,7 +598,9 @@ ixhash_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc) {
   }
 
   /* free the ixhash elem */
-  Safefree(stack);
+  if ( ! subdoc ) {
+    Safefree(stack);
+  }
 }
 
 /* Construct a BSON document from an iterator code ref that returns key
@@ -640,7 +644,9 @@ iter_src_to_bson(bson_t * bson, SV *sv, HV *opts, stackette *stack, bool subdoc)
   }
 
   /* free the stack elem for sv */
-  Safefree(stack);
+  if ( ! subdoc ) {
+    Safefree(stack);
+  }
 }
 
 /* This is for an array reference contained *within* a document */
@@ -766,7 +772,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         const char *bson_str;
         bson_t *child;
 
-        encoded = call_perl_reader(sv, "bson");
+        encoded = sv_2mortal(call_perl_reader(sv, "bson"));
         bson_str = SvPV(encoded, str_len);
 
         child = bson_new_from_data((uint8_t*) bson_str, str_len);
@@ -943,7 +949,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         char *str;
         STRLEN str_len;
 
-        str_sv = call_perl_reader(sv,"value");
+        str_sv = sv_2mortal(call_perl_reader(sv,"value"));
         append_utf8(bson, key, str_sv);
       }
       else if (strEQ(obj_type, "MongoDB::BSON::String")) {
@@ -1010,7 +1016,7 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
         bson_append_int64(bson, key, -1, math_bigint_to_int64(sv,key));
       }
       else if (strEQ(obj_type, "BSON::Int64") ) {
-        SV *v = call_perl_reader(sv, "value");
+        SV *v = sv_2mortal(call_perl_reader(sv, "value"));
 
         if ( SvROK(v) ) {
           /* delegate to wrapped value type */
