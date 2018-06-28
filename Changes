@@ -2,6 +2,11 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [Testing]
+
+    - PERL-954 Prevent deprecation warnings from use of deprecated MongoDB
+      v2.0.0 classes in test code.
+
     [~ Internal Changes ~]
 
     - Removed unused monotonic time function that was causing
