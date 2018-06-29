@@ -7,11 +7,6 @@ Revision history for BSON-XS
     - PERL-954 Prevent deprecation warnings from use of deprecated MongoDB
       v2.0.0 classes in test code.
 
-    [~ Internal Changes ~]
-
-    - Removed unused monotonic time function that was causing
-      link errors on Windows XP
-
 v0.4.2    2018-06-13 10:01:13-04:00 America/New_York
 
     [Bug fixes]
