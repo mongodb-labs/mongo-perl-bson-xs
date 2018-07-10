@@ -2,6 +2,8 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+v0.4.3    2018-07-10 09:51:48-04:00 America/New_York
+
     [Testing]
 
     - PERL-954 Prevent deprecation warnings from use of deprecated MongoDB
