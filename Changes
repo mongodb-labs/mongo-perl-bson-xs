@@ -2,6 +2,8 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+v0.4.4    2018-09-12 23:14:04-04:00 America/New_York
+
     [Bug fixes]
 
     - PERL-998 Don't wrap top-level documents in a BSON::DBRef, even
