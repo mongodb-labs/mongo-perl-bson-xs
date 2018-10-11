@@ -1614,6 +1614,7 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
        * buffer pointer just past the inner length and adjusted len */
       int32_t sublen;
       Copy(buf-4, &sublen, 1, int32_t);
+      sublen = BSON_UINT32_FROM_LE(sublen);
 
       /* adjusted len must match sublen */
       if ( sublen != len ) {
