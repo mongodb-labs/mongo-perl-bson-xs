@@ -2,6 +2,10 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [Bug fixes]
+
+    - PERL-1016 Fix BSON timestamp decoding on 32-bit perls.
+
 v0.4.5    2018-10-11 21:38:03-04:00 America/New_York
 
     [Bug fixes]
