@@ -1049,8 +1049,12 @@ sv_to_bson_elem (bson_t * bson, const char * in_key, SV *sv, HV *opts, stackette
 
         dec_sv = sv_2mortal(call_perl_reader( sv, "bytes" ));
         bid_bytes = SvPV_nolen(dec_sv);
+
+        /* normalize from little endian back to native byte order */
         Copy(bid_bytes, &dec.low, 1, uint64_t);
         Copy(bid_bytes + 8, &dec.high, 1, uint64_t);
+        dec.low = BSON_UINT64_FROM_LE(dec.low);
+        dec.high = BSON_UINT64_FROM_LE(dec.high);
 
         bson_append_decimal128(bson, key, -1, &dec);
       }
@@ -1803,8 +1807,12 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
       croak("could not decode decimal128");
     }
 
+    /* normalize to little endian regardless of native byte order */
+    dec.low = BSON_UINT64_TO_LE(dec.low);
+    dec.high = BSON_UINT64_TO_LE(dec.high);
     Copy(&dec.low, bid_bytes, 1, uint64_t);
     Copy(&dec.high, bid_bytes + 8, 1, uint64_t);
+
     dec_sv = sv_2mortal(newSVpvn(bid_bytes, 16));
     value = new_object_from_pairs("BSON::Decimal128", "bytes", dec_sv, NULL);
 
