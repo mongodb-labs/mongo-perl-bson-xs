@@ -1782,8 +1782,8 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts ) {
 
     bson_iter_timestamp(iter, &sec, &inc);
 
-    sec_sv = sv_2mortal(newSViv(sec));
-    inc_sv = sv_2mortal(newSViv(inc));
+    sec_sv = sv_2mortal(newSVuv(sec));
+    inc_sv = sv_2mortal(newSVuv(inc));
 
     value = new_object_from_pairs("BSON::Timestamp", "seconds", sec_sv, "increment", inc_sv, NULL);
     break;
