@@ -2,6 +2,19 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [Bug fixes]
+
+    - PERL-1013 Fix binary subtype 2 and Decimal128 encoding
+      on big-endian platforms.
+
+    [Testing]
+
+    - Synchronize tests with BSON.pm
+
+    [Prereqs]
+
+    - Requires BSON.pm v1.8.1
+
 v0.4.4    2018-09-12 23:14:04-04:00 America/New_York
 
     [Bug fixes]
