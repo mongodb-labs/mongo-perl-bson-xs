@@ -53,10 +53,55 @@ use BSON::Types ':all';
     like( $@, qr/Can't encode non-container of type 'Some::Object'/, "encoding hash-type object is fatal" );
 }
 
+subtest nesting => sub {
+    my $err;
+
+    eval { encode( create_nest(100) ) };
+    $err = $@;
+    is( $err, '', "No error encoding 100 levels of hash" );
+
+    eval { encode( create_nest(101) ) };
+    $err = $@;
+    like(
+        $err,
+        qr/Exceeded max object depth of 100/,
+        "Hit the specified max depth encoding documents at 101 levels of hash"
+    ) or diag($err);
+
+    eval { encode( { 0 => [ map { create_nest(98) } 1 .. 5 ] } ) };
+    $err = $@;
+    is( $err, '', "No error at 100 levels of hash+array+hash" );
+
+    eval { encode( { 0 => [ map { create_nest(99) } 1 .. 5 ] } ) };
+    $err = $@;
+    like(
+        $err,
+        qr/Exceeded max object depth of 100/,
+        "Hit the specified max depth encoding documents at 101 levels of hash+array+hash"
+    ) or diag($err);
+
+    # synthesize 10 and 101 levels of BSON
+    my $bson_100 = encode( create_nest(100) );
+    my $bson_101 = pack("lCZ*",0,0x03,"a") . $bson_100 . "\x00";
+    substr($bson_101,0,4,pack("l",length $bson_101));
+
+    eval { decode($bson_100) };
+    $err = $@;
+    is( $err, '', "No error decoding 100 levels of hash" );
+
+    eval { decode($bson_101) };
+    $err = $@;
+    like(
+        $err,
+        qr/Exceeded max object depth of 100/,
+        "Hit the specified max depth decoding documents at 101 levels of hash"
+    ) or diag($err);
+
+};
+
 
 done_testing;
 
 # COPYRIGHT
 #
 # vim: set ts=4 sts=4 sw=4 et tw=75:
-
