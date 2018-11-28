@@ -70,15 +70,11 @@ typedef struct _stackette {
 #define MAX_DEPTH 100
 
 /* convenience functions taken from Text::CSV_XS by H.M. Brand */
-#define _is_arrayref(f) ( f && \
-     (SvROK (f) || (SvRMAGICAL (f) && (mg_get (f), 1) && SvROK (f))) && \
-      SvOK (f) && SvTYPE (SvRV (f)) == SVt_PVAV )
-#define _is_hashref(f) ( f && \
-     (SvROK (f) || (SvRMAGICAL (f) && (mg_get (f), 1) && SvROK (f))) && \
-      SvOK (f) && SvTYPE (SvRV (f)) == SVt_PVHV )
-#define _is_coderef(f) ( f && \
-     (SvROK (f) || (SvRMAGICAL (f) && (mg_get (f), 1) && SvROK (f))) && \
-      SvOK (f) && SvTYPE (SvRV (f)) == SVt_PVCV )
+#define _is_reftype(f,x) \
+    (f && ((SvGMAGICAL (f) && mg_get (f)) || 1) && SvROK (f) && SvTYPE (SvRV (f)) == x)
+#define _is_arrayref(f) _is_reftype (f, SVt_PVAV)
+#define _is_hashref(f)  _is_reftype (f, SVt_PVHV)
+#define _is_coderef(f)  _is_reftype (f, SVt_PVCV)
 
 /* shorthand for getting an SV* from a hash and key */
 #define _hv_fetchs_sv(h,k) \
