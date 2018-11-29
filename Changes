@@ -2,6 +2,8 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+v0.6.0    2018-11-29 17:08:47-05:00 America/New_York
+
     [Changed]
 
     - PERL-1031 Limit BSON max-depth
