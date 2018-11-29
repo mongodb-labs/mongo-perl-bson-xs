@@ -1884,8 +1884,8 @@ bson_elem_to_sv (const bson_iter_t * iter, const char *key, HV *opts, int depth)
     break;
   }
   default: {
-    croak("type %d not supported\n", bson_iter_type(iter));
-    /* give up, it'll be trouble if we keep going */
+    /* Should already have been caught during bson_validate() but in case not: */
+    croak("unsupported BSON type \\x%02X for key '%s'.  Are you using the latest version of BSON::XS?", bson_iter_type(iter), key );
   }
   }
   return value;
@@ -1920,6 +1920,8 @@ _decode_bson(msg, options)
         size_t error_offset;
         STRLEN length;
         HV *opts;
+        uint32_t invalid_type;
+        const char *invalid_key;
 
     PPCODE:
         data = SvPV(msg, length);
@@ -1938,8 +1940,12 @@ _decode_bson(msg, options)
           croak("Error reading BSON document");
         }
 
-        if ( ! bson_validate(&bson, BSON_VALIDATE_NONE, &error_offset) ) {
+        if ( ! bson_validate(&bson, BSON_VALIDATE_NONE, &error_offset, &invalid_key, &invalid_type) ) {
           croak( "Invalid BSON input" );
+        }
+
+        if ( invalid_type != 0 ) {
+            croak("unsupported BSON type \\x%02X for key '%s'.  Are you using the latest version of BSON::XS?", invalid_type, invalid_key );
         }
 
         if ( ! bson_iter_init(&iter, &bson) ) {

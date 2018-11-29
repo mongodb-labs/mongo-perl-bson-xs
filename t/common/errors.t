@@ -23,6 +23,18 @@ use BSON::Types ':all';
 }
 
 {
+    my $bson = encode( { a => 1.1 } );
+    # swap the type byte to an unknown one
+    substr($bson,4,1,"\xEE");
+    eval { decode($bson) };
+    like(
+        $@,
+        qr/unsupported BSON type \\xEE for key 'a'\.  Are you using the latest version/,
+        "decoding unknown type is fatal"
+    );
+}
+
+{
     no warnings 'once';
     my $glob = *foo;
     eval { encode( \$glob ) };
@@ -82,8 +94,8 @@ subtest nesting => sub {
 
     # synthesize 10 and 101 levels of BSON
     my $bson_100 = encode( create_nest(100) );
-    my $bson_101 = pack("lCZ*",0,0x03,"a") . $bson_100 . "\x00";
-    substr($bson_101,0,4,pack("l",length $bson_101));
+    my $bson_101 = pack("l<CZ*",0,0x03,"a") . $bson_100 . "\x00";
+    substr($bson_101,0,4,pack("l<",length $bson_101));
 
     eval { decode($bson_100) };
     $err = $@;
