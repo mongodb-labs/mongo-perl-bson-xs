@@ -43,6 +43,17 @@ sub _printable {
 
 __END__
 
+=begin :prelude
+
+=head1 END OF LIFE NOTICE
+
+Version v0.8.0 is the final feature release of the MongoDB BSON::XS
+library.  The library is now in a 12-month "sunset" period and will
+receive security patches and critical bug fixes only.  The BSON::XS
+library will be end-of-life and unsupported on August 13, 2020.
+
+=end :prelude
+
 =head1 DESCRIPTION
 
 This module contains an XS implementation for BSON encoding and
