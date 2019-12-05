@@ -2,6 +2,10 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+    [Fixed]
+
+    - PERL-1128 Fixed gettid build conflict with newer gcc
+
 v0.8.1    2019-08-13 08:19:37-04:00 America/New_York
 
   [!!! END OF LIFE NOTICE !!!]
