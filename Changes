@@ -2,6 +2,8 @@ Revision history for BSON-XS
 
 {{$NEXT}}
 
+v0.8.3    2020-04-13 10:56:53-04:00 America/New_York
+
     [Fixed]
 
     - PERL-1130 Fixed memory leaks in circular reference detection
