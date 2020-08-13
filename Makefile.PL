@@ -10,7 +10,7 @@ use 5.010001;
 use ExtUtils::MakeMaker;
 
 my %WriteMakefileArgs = (
-  "ABSTRACT" => "XS implementation of MongoDB's BSON serialization",
+  "ABSTRACT" => "XS implementation of MongoDB's BSON serialization (EOL)",
   "AUTHOR" => "David Golden <david\@mongodb.com>",
   "CONFIGURE_REQUIRES" => {
     "Config::AutoConf" => "0.22",
